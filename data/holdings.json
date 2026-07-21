@@ -1,0 +1,40 @@
+{
+  "003015": {
+    "fund_code": "003015",
+    "fund_name": "中金沪深300指数增强A",
+    "fund_type": "index_enhanced",
+    "volatility_profile": "broad_market",
+    "benchmark_index": "000300",
+    "benchmark_name": "沪深300",
+    "cost_lots": [
+      {
+        "date": "2026-07-20",
+        "amount_cny": 1000.0,
+        "nav_at_purchase": 2.0984,
+        "shares": 476.55,
+        "nav_confirmed": true,
+        "note": "首次建仓"
+      }
+    ],
+    "skip_tracking": false
+  },
+  "018927": {
+    "fund_code": "018927",
+    "fund_name": "南方中证电池主题指数发起C",
+    "fund_type": "sector_index",
+    "volatility_profile": "sector",
+    "benchmark_index": "931719",
+    "benchmark_name": "中证电池主题指数",
+    "cost_lots": [
+      {
+        "date": "2026-07-21",
+        "amount_cny": 500.0,
+        "nav_at_purchase": 1.367,
+        "shares": 365.76,
+        "nav_confirmed": true,
+        "note": "7月21日15:00后购买，待确认净值"
+      }
+    ],
+    "skip_tracking": false
+  }
+}

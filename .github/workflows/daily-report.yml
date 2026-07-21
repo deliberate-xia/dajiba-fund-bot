@@ -1,0 +1,56 @@
+name: Daily Fund Report
+
+on:
+  schedule:
+    # Beijing 21:17 = UTC 13:17, Mon-Fri (17-min offset avoids peak congestion)
+    - cron: '17 13 * * 1-5'
+  workflow_dispatch:      # Manual trigger for testing
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - '.github/workflows/daily-report.yml'
+
+jobs:
+  generate-and-push-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run fund report
+        env:
+          PUSHPLUS_USER_TOKEN: ${{ secrets.PUSHPLUS_USER_TOKEN }}
+          PUSHPLUS_TOPIC_TOKEN: ${{ secrets.PUSHPLUS_TOPIC_TOKEN }}
+          TZ: Asia/Shanghai
+        run: python src/main.py
+
+      - name: Commit and push data updates
+        if: success() || failure()
+        run: |
+          git config user.name "fund-bot"
+          git config user.email "fund-bot@github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+          else
+            git commit -m "auto: update data $(TZ='Asia/Shanghai' date +%Y-%m-%d)"
+            git push
+          fi
