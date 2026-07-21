@@ -7,19 +7,17 @@ import time
 import requests
 
 PUSHPLUS_API_URL = "https://www.pushplus.plus/send"
-# Match SAIER1234/investment-bot: no custom headers, let requests handle it
-HEADERS = {}
 
 
 def _try_send(payload: dict) -> bool:
     """Single attempt to POST."""
     try:
-        resp = requests.post(PUSHPLUS_API_URL, json=payload, headers=HEADERS, timeout=15)
+        resp = requests.post(PUSHPLUS_API_URL, json=payload, timeout=15)
         data = resp.json()
         code = data.get("code", -1)
         if code == 200:
             return True
-        print(f"[PushPlus] API error: {data.get('msg', 'unknown')}")
+        print(f"[PushPlus] API error (code={code}): {data}")
         return False
     except requests.RequestException as e:
         print(f"[PushPlus] Network error: {e}")
