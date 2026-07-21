@@ -241,7 +241,7 @@ def main():
             analysis.daily_change_pct, alert_type,
         )
         title = f"基金异动提醒 - {analysis.fund_name}"
-        ok = send_alert(user_token, title, alert_msg)
+        ok = send_alert(user_token, title, alert_msg, topic_token=topic_token)
         if ok:
             print(f"[Alert] Sent: {title}")
         else:
@@ -250,7 +250,7 @@ def main():
     # ---- 9. Push daily report ----
     date_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
     title = f"大基吧日报 - {date_str}"
-    ok = send_report(user_token, title, report, template="markdown")
+    ok = send_report(user_token, title, report, topic_token=topic_token, template="markdown")
 
     if not ok:
         print("WARNING: Failed to send report via PushPlus (data saved, will retry on next run)")
