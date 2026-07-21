@@ -7,10 +7,8 @@ import time
 import requests
 
 PUSHPLUS_API_URL = "https://www.pushplus.plus/send"
-HEADERS = {
-    "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-}
+# Match SAIER1234/investment-bot: no custom headers, let requests handle it
+HEADERS = {}
 
 
 def _try_send(payload: dict) -> bool:
