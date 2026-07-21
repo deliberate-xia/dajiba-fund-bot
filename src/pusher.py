@@ -6,7 +6,7 @@ import time
 
 import requests
 
-PUSHPLUS_API_URL = "http://www.pushplus.plus/send"
+PUSHPLUS_API_URL = "https://www.pushplus.plus/send"
 HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
