@@ -13,6 +13,9 @@ on:
       - 'requirements.txt'
       - '.github/workflows/daily-report.yml'
 
+permissions:
+  contents: write          # Allow git push back to repo
+
 jobs:
   generate-and-push-report:
     runs-on: ubuntu-latest
