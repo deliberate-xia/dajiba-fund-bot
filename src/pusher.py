@@ -1,6 +1,5 @@
 """
 PushPlus WeChat push integration.
-Tries multiple tokens until one succeeds.
 """
 import time
 
@@ -24,46 +23,6 @@ def _try_send(payload: dict) -> bool:
         return False
 
 
-def send_with_tokens(
-    tokens: list[str],
-    title: str,
-    content: str,
-    template: str = "markdown",
-    topic_token: str = "",
-    max_retries: int = 3,
-) -> bool:
-    """
-    Send via PushPlus, trying each token in order.
-    Returns True if any token succeeds.
-    """
-    for token_idx, token in enumerate(tokens):
-        if not token:
-            continue
-
-        payload = {
-            "token": token,
-            "title": title,
-            "content": content,
-            "template": template,
-        }
-        if topic_token and token_idx == 0:
-            payload["topic"] = topic_token
-
-        label = f"token[{token_idx}]"
-        print(f"[PushPlus] Trying {label}: {title}")
-
-        for attempt in range(1, max_retries + 1):
-            if _try_send(payload):
-                print(f"[PushPlus] OK via {label}")
-                return True
-            if attempt < max_retries:
-                time.sleep(2 ** attempt)
-
-        print(f"[PushPlus] FAILED via {label}")
-
-    return False
-
-
 def send_report(
     user_token: str,
     title: str,
@@ -71,9 +30,27 @@ def send_report(
     topic_token: str = "",
     template: str = "markdown",
 ) -> bool:
-    """Send a Markdown report. Tries user_token first, then topic_token as independent fallback."""
-    tokens = [t for t in [user_token, topic_token] if t]
-    return send_with_tokens(tokens, title, content, template=template)
+    """
+    Send via PushPlus. Retries up to 2 times with 3s delay to avoid rate limiting.
+    """
+    payload = {
+        "token": user_token,
+        "title": title,
+        "content": content,
+        "template": template,
+    }
+
+    print(f"[PushPlus] Sending: {title}")
+
+    for attempt in range(1, 4):  # 3 attempts
+        if _try_send(payload):
+            print(f"[PushPlus] OK")
+            return True
+        if attempt < 3:
+            time.sleep(3)  # Wait between retries to avoid rate limiting
+
+    print(f"[PushPlus] FAILED after 3 attempts")
+    return False
 
 
 def send_alert(
@@ -83,4 +60,4 @@ def send_alert(
     topic_token: str = "",
 ) -> bool:
     """Send a short alert (plain text)."""
-    return send_report(user_token, title, content, topic_token, template="txt")
+    return send_report(user_token, title, content, template="txt")

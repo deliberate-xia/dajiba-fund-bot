@@ -5,6 +5,7 @@ Entry point for GitHub Actions workflow.
 """
 import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -234,23 +235,12 @@ def main():
         bot_name="大基吧",
     )
 
-    # ---- 8. Push extra alerts first ----
-    for analysis, alert_type in alerts_to_send:
-        alert_msg = build_extra_alert(
-            analysis.fund_code, analysis.fund_name,
-            analysis.daily_change_pct, alert_type,
-        )
-        title = f"基金异动提醒 - {analysis.fund_name}"
-        ok = send_alert(user_token, title, alert_msg, topic_token=topic_token)
-        if ok:
-            print(f"[Alert] Sent: {title}")
-        else:
-            print(f"[Alert] FAILED: {title}")
-
-    # ---- 9. Push daily report ----
+    # ---- 8. Push daily report (single push to avoid rate limiting) ----
+    # Extra alerts are incorporated into the main report when applicable
     date_str = f"{today.year}年{today.month:02d}月{today.day:02d}日"
     title = f"大基吧日报 - {date_str}"
-    ok = send_report(user_token, title, report, topic_token=topic_token, template="markdown")
+    ok = send_report(user_token, title, report, template="markdown")
+    time.sleep(2)  # Respect rate limit between pushes
 
     if not ok:
         print("WARNING: Failed to send report via PushPlus (data saved, will retry on next run)")
