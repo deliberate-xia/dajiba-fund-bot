@@ -253,10 +253,11 @@ def main():
     ok = send_report(user_token, title, report, template="markdown")
 
     if not ok:
-        print("ERROR: Failed to send report via PushPlus")
+        print("WARNING: Failed to send report via PushPlus (data saved, will retry on next run)")
         run_state["failed_runs"] = run_state.get("failed_runs", 0) + 1
     else:
         print("Report pushed successfully!")
+        run_state["failed_runs"] = 0
 
     # ---- 10. Update run state ----
     run_state["last_run_date"] = today.isoformat()
@@ -273,8 +274,7 @@ def main():
           f"Missed: {len(missed) if missed else 0}")
     print(f"{'='*50}\n")
 
-    if not ok:
-        sys.exit(1)
+    # Always exit 0 — graph data is saved; push failure is logged but not fatal
 
 
 if __name__ == "__main__":

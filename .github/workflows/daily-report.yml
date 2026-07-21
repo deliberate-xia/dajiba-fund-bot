@@ -5,13 +5,6 @@ on:
     # Beijing 21:17 = UTC 13:17, Mon-Fri (17-min offset avoids peak congestion)
     - cron: '17 13 * * 1-5'
   workflow_dispatch:      # Manual trigger for testing
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'requirements.txt'
-      - '.github/workflows/daily-report.yml'
 
 permissions:
   contents: write          # Allow git push back to repo
@@ -55,5 +48,6 @@ jobs:
             echo "No data changes to commit"
           else
             git commit -m "auto: update data $(TZ='Asia/Shanghai' date +%Y-%m-%d)"
+            git pull --rebase origin main
             git push
           fi
