@@ -11,7 +11,7 @@
         "date": "2026-07-20",
         "amount_cny": 666.67,
         "nav_at_purchase": 2.0984,
-        "shares": 317.70,
+        "shares": 317.7,
         "nav_confirmed": true,
         "note": "首次建仓¥1000 → 7/28赎回1/3转投电池"
       }
@@ -37,13 +37,13 @@
       {
         "date": "2026-07-28",
         "amount_cny": 333.33,
-        "nav_at_purchase": null,
-        "shares": null,
-        "nav_confirmed": false,
+        "nav_at_purchase": 1.3852,
+        "shares": 240.64,
+        "nav_confirmed": true,
         "note": "沪深300赎回1/3转入，待确认净值"
       }
     ],
-    "skip_tracking": true
+    "skip_tracking": false
   },
   "161725": {
     "fund_code": "161725",
