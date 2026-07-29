@@ -233,23 +233,112 @@ def _build_fund_detail(a, holding) -> str:
     return "\n".join(lines)
 
 
-def _build_footer(bot_name: str, is_friday: bool) -> str:
-    lines = []
-    if is_friday:
-        lines.extend([
-            "## 📅 周末展望",
-            "",
-            "- 周末为非交易日，下周一晚间将发送下一份日报",
-            "- 建议周末复盘持仓，关注政策面和资金面变化",
-            "- 电池板块近期波动较大，注意控制仓位",
-            "",
-            "---",
-            "",
-        ])
-    lines.extend([
+def _build_footer(bot_name: str) -> str:
+    lines = [
         f"> ⚠️ 本报告由{bot_name}自动生成，仅供参考，不构成投资建议。",
         "> 基金投资有风险，过往业绩不预示未来表现。请根据自身风险承受能力独立决策。",
+    ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Weekly review (Friday only)
+# ---------------------------------------------------------------------------
+
+def _build_weekly_review(week_data: dict) -> str:
+    """
+    Build the weekly operation review section.
+
+    week_data expected keys:
+      - week_label: str (e.g. "7/20-7/24")
+      - operations: list[dict] with keys: date, fund_name, action, amount, evaluation
+      - fund_weekly: list[dict] with keys: fund_name, weekly_return_pct, cumulative_pnl_pct, trend_light, comment
+      - good_moves: list[str]
+      - concerns: list[str]
+      - next_week_notes: list[str]
+      - total_weekly_pnl_pct: float
+    """
+    operations = week_data.get("operations", [])
+    fund_weekly = week_data.get("fund_weekly", [])
+    good_moves = week_data.get("good_moves", [])
+    concerns = week_data.get("concerns", [])
+    next_week_notes = week_data.get("next_week_notes", [])
+    week_label = week_data.get("week_label", "")
+    total_pnl = week_data.get("total_weekly_pnl_pct", 0.0)
+
+    lines = [
+        f"## 📋 本周操作复盘（{week_label}）",
+        "",
+    ]
+
+    # ---- Portfolio weekly P&L ----
+    pnl_emoji = "📈" if total_pnl >= 0 else "📉"
+    lines.append(f"{pnl_emoji} **组合本周盈亏：{total_pnl:+.2f}%**")
+    lines.append("")
+
+    # ---- Operations review ----
+    if operations:
+        lines.extend([
+            "### 🔄 操作明细",
+            "",
+            "| 日期 | 基金 | 操作 | 金额 | 评价 |",
+            "|------|------|------|------|------|",
+        ])
+        for op in operations:
+            lines.append(
+                f"| {op['date']} | {op['fund_name']} | {op['action']} "
+                f"| ¥{op['amount']:,.0f} | {op['evaluation']} |"
+            )
+        lines.append("")
+    else:
+        lines.extend([
+            "### 🔄 操作明细",
+            "",
+            "本周无操作，静观其变也是一种策略。",
+            "",
+        ])
+
+    # ---- Per-fund weekly performance ----
+    lines.extend([
+        "### 📊 各基金本周表现",
+        "",
+        "| 基金 | 本周涨跌 | 累计盈亏 | 趋势 | 点评 |",
+        "|------|----------|----------|------|------|",
     ])
+    for fw in fund_weekly:
+        icon = _traffic_icon(fw.get("trend_light", "yellow"))
+        lines.append(
+            f"| {fw['fund_name']} | {fmt_pct(fw.get('weekly_return_pct', 0))} "
+            f"| {fmt_pct(fw.get('cumulative_pnl_pct', 0))} "
+            f"| {icon} | {fw.get('comment', '')} |"
+        )
+    lines.append("")
+
+    # ---- Overall evaluation ----
+    lines.append("### 🧠 总体评价")
+    lines.append("")
+
+    if good_moves:
+        lines.append("**✅ 正确的：**")
+        for g in good_moves:
+            lines.append(f"- {g}")
+        lines.append("")
+
+    if concerns:
+        lines.append("**⚠️ 需要注意的：**")
+        for c in concerns:
+            lines.append(f"- {c}")
+        lines.append("")
+
+    # ---- Next week ----
+    if next_week_notes:
+        lines.append("### 📅 下周关注")
+        lines.append("")
+        for n in next_week_notes:
+            lines.append(f"- {n}")
+        lines.append("")
+
+    lines.extend(["---", ""])
     return "\n".join(lines)
 
 
@@ -265,20 +354,33 @@ def build_daily_report(
     is_friday: bool = False,
     missed_days: list[date] | None = None,
     bot_name: str = "大基吧",
+    week_data: dict | None = None,
 ) -> str:
     """
     Generate the complete Markdown daily report.
+
+    If is_friday and week_data is provided, includes a weekly review section
+    with operation evaluation and forward-looking notes.
     """
     sections = [
         _build_header(report_date, bot_name, missed_days),
         _build_portfolio_overview(analyses, portfolio, holdings),
     ]
 
-    for a in analyses:
-        holding = holdings.get(a.fund_code) if a else None
-        sections.append(_build_fund_detail(a, holding))
+    # Weekly review goes after portfolio overview but before per-fund details
+    if is_friday and week_data:
+        sections.append(_build_weekly_review(week_data))
 
-    sections.append(_build_footer(bot_name, is_friday))
+    for a in analyses:
+        holding_ = holdings.get(a.fund_code) if a else None
+        sections.append(_build_fund_detail(a, holding_))
+
+    # Footer: weekend note only if weekly review wasn't included
+    if is_friday and not week_data:
+        lines = ["## 📅 周末展望", "", "周末为非交易日，下周一晚间将发送下一份日报。", "", "---", ""]
+        sections.append("\n".join(lines))
+
+    sections.append(_build_footer(bot_name))
     return "\n".join(sections)
 
 

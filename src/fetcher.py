@@ -99,9 +99,9 @@ def _fetch_index_raw(index_code: str) -> pd.DataFrame:
       - CSI Battery ("931719") via ak.stock_zh_index_hist_csindex()
       - Others: tries CSIndex format first, falls back to Eastmoney
     """
-    if index_code == "000300":
-        df = ak.stock_zh_index_daily_em(symbol="sh000300")
-    elif index_code == "931719":
+    # Route all indices through CSIndex API (csindex.com.cn) first.
+    # stock_zh_index_daily_em hits eastmoney.com which may be blocked by proxy.
+    if index_code == "931719":
         df = ak.stock_zh_index_hist_csindex(symbol="931719")
     else:
         try:

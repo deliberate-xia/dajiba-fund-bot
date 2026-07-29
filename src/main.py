@@ -82,6 +82,7 @@ def _check_pending_confirmations(
                 lot["nav_at_purchase"] = latest["nav"]
                 lot["shares"] = round(lot["amount_cny"] / latest["nav"], 2)
                 lot["nav_confirmed"] = True
+                changed = True
                 print(f"[{code}]   ✅ NAV confirmed: {latest['nav']} on {latest['date']}")
 
         # If all lots confirmed, enable tracking
@@ -89,14 +90,143 @@ def _check_pending_confirmations(
             holding.skip_tracking = False
             print(f"[{code}] All lots confirmed — tracking enabled.")
 
-        changed = True
-
     return changed
 
 
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
+
+def _collect_weekly_data(
+    holdings: dict,
+    analyses: list,
+    today: date,
+) -> dict:
+    """
+    Collect weekly operations and performance for Friday review.
+    """
+    from datetime import timedelta
+
+    # Find this week's Monday
+    monday = today - timedelta(days=today.weekday())
+
+    # ---- Detect operations this week ----
+    operations = []
+    for code, h in holdings.items():
+        for lot in h.cost_lots:
+            lot_date_str = lot.get("date", "")
+            if not lot_date_str:
+                continue
+            try:
+                lot_date = date.fromisoformat(lot_date_str)
+            except (ValueError, TypeError):
+                continue
+            if lot_date < monday or lot_date > today:
+                continue
+
+            # Determine action type from note
+            note = lot.get("note", "")
+            amount = lot.get("amount_cny", 0)
+            if "转入" in note:
+                action = "加仓（转入）"
+            elif "赎回" in note:
+                action = "减仓"
+            else:
+                action = "建仓/加仓"
+
+            operations.append({
+                "date": lot_date_str,
+                "fund_name": h.fund_name,
+                "action": action,
+                "amount": amount,
+                "evaluation": _evaluate_operation(h, lot, lot_date, note),
+            })
+
+    # ---- Per-fund weekly performance ----
+    fund_weekly = []
+    for a in analyses:
+        if a is None or a.signal_type == "pending":
+            continue
+        weekly_ret = a.return_7d  # Close enough for a ~5-day trading week
+        # Build per-fund comment
+        if a.trend_light == "green":
+            comment = "趋势向好，继续持有"
+        elif a.trend_light == "yellow":
+            comment = "震荡整理，持仓观望"
+        else:
+            comment = "趋势偏弱，密切关注"
+        if a.signal_urgency == "alert":
+            comment = "⚠️ " + comment
+
+        fund_weekly.append({
+            "fund_name": a.fund_name,
+            "weekly_return_pct": weekly_ret,
+            "cumulative_pnl_pct": a.cumulative_return_pct,
+            "trend_light": a.trend_light,
+            "comment": comment,
+        })
+
+    # ---- Good moves & concerns ----
+    good_moves = []
+    concerns = []
+
+    # Good: held through green-light funds, added to winners
+    green_funds = [a.fund_name for a in analyses if a and a.trend_light == "green"]
+    if green_funds:
+        good_moves.append(f"{'、'.join(green_funds)} 趋势偏多，继续持有是正确的")
+    if not operations:
+        good_moves.append("本周无频繁操作，保持纪律")
+
+    # Concerns
+    red_funds = [a.fund_name for a in analyses if a and a.trend_light == "red"]
+    for fn in red_funds:
+        concerns.append(f"{fn} 亮红灯（偏空），上周如有加仓需谨慎，下周重点观察是否继续走弱")
+    if len(operations) >= 3:
+        concerns.append(f"本周操作 {len(operations)} 笔，交易频率偏高，基金不适合频繁进出")
+
+    # Check for early sales
+    for op in operations:
+        if "减仓" in op["action"]:
+            concerns.append(f"{op['fund_name']} 本周有减仓操作，确认是否基于明确的策略信号")
+
+    # ---- Next week ----
+    next_week_notes = []
+    for a in analyses:
+        if a is None or a.signal_type == "pending":
+            continue
+        if a.signal_type == "add":
+            next_week_notes.append(f"📌 {a.fund_name} 发出加仓信号，下周可关注入场时机")
+        elif a.signal_urgency == "warning" or a.signal_urgency == "alert":
+            next_week_notes.append(f"⚠️ {a.fund_name} 需谨慎，{a.signal_message[:20]}...")
+    if not next_week_notes:
+        next_week_notes.append("📌 无特别信号，维持现有持仓，静待趋势明朗")
+
+    # ---- Total weekly PnL ----
+    total_pnl_pct = sum(fw["weekly_return_pct"] for fw in fund_weekly) / len(fund_weekly) if fund_weekly else 0.0
+
+    return {
+        "week_label": f"{monday.month}/{monday.day}-{today.month}/{today.day}",
+        "operations": operations,
+        "fund_weekly": fund_weekly,
+        "good_moves": good_moves,
+        "concerns": concerns,
+        "next_week_notes": next_week_notes,
+        "total_weekly_pnl_pct": total_pnl_pct,
+    }
+
+
+def _evaluate_operation(holding, lot, lot_date: date, note: str) -> str:
+    """Generate a brief evaluation of a single operation."""
+    if not lot.get("nav_confirmed", False):
+        return "⏳ 待确认净值"
+    if "转入" in note:
+        return "集中持仓，方向明确"
+    if "赎回" in note:
+        return "主动调仓，需后续验证"
+    if "建仓" in note:
+        return "首次建仓，入场时机合理"
+    return "正常操作"
+
 
 def main():
     data_dir = _get_data_dir()
@@ -220,6 +350,16 @@ def main():
             print(f"  ERROR in analysis: {e}")
             import traceback
             traceback.print_exc()
+            from src.analyzer import FundAnalysis
+            fa = FundAnalysis(
+                fund_code=fund_code,
+                fund_name=holding.fund_name,
+                data_quality="stale",
+                trend_explanation=f"分析计算异常: {e}",
+                signal_type="hold",
+                signal_message="今日分析异常，请稍后手动重试。",
+            )
+            analyses.append(fa)
 
     # ---- 6. Portfolio summary ----
     portfolio = compute_portfolio_summary(analyses)
@@ -228,11 +368,13 @@ def main():
 
     # ---- 7. Build report ----
     is_friday = cal.is_friday(today)
+    week_data = _collect_weekly_data(holdings, analyses, today) if is_friday else None
     report = build_daily_report(
         today, analyses, holdings, portfolio,
         is_friday=is_friday,
         missed_days=missed,
         bot_name="大基吧",
+        week_data=week_data,
     )
 
     # ---- 8. Push daily report (single push to avoid rate limiting) ----

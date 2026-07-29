@@ -9,11 +9,11 @@
     "cost_lots": [
       {
         "date": "2026-07-20",
-        "amount_cny": 1000.0,
+        "amount_cny": 666.67,
         "nav_at_purchase": 2.0984,
-        "shares": 476.55,
+        "shares": 317.70,
         "nav_confirmed": true,
-        "note": "首次建仓"
+        "note": "首次建仓¥1000 → 7/28赎回1/3转投电池"
       }
     ],
     "skip_tracking": false
@@ -32,7 +32,53 @@
         "nav_at_purchase": 1.367,
         "shares": 365.76,
         "nav_confirmed": true,
-        "note": "7月21日15:00后购买，待确认净值"
+        "note": "7月21日15:00后购买"
+      },
+      {
+        "date": "2026-07-28",
+        "amount_cny": 333.33,
+        "nav_at_purchase": null,
+        "shares": null,
+        "nav_confirmed": false,
+        "note": "沪深300赎回1/3转入，待确认净值"
+      }
+    ],
+    "skip_tracking": true
+  },
+  "161725": {
+    "fund_code": "161725",
+    "fund_name": "招商中证白酒指数A",
+    "fund_type": "sector_index",
+    "volatility_profile": "sector",
+    "benchmark_index": "399997",
+    "benchmark_name": "中证白酒指数",
+    "cost_lots": [
+      {
+        "date": "2026-07-24",
+        "amount_cny": 400.0,
+        "nav_at_purchase": 0.5395,
+        "shares": 741.43,
+        "nav_confirmed": true,
+        "note": "7月24日购买（含光伏清仓转投¥200）"
+      }
+    ],
+    "skip_tracking": false
+  },
+  "010956": {
+    "fund_code": "010956",
+    "fund_name": "天弘中证智能汽车主题指数C",
+    "fund_type": "sector_index",
+    "volatility_profile": "sector",
+    "benchmark_index": "930721",
+    "benchmark_name": "中证智能汽车主题指数",
+    "cost_lots": [
+      {
+        "date": "2026-07-24",
+        "amount_cny": 400.0,
+        "nav_at_purchase": 0.8988,
+        "shares": 445.04,
+        "nav_confirmed": true,
+        "note": "7月24日购买"
       }
     ],
     "skip_tracking": false
