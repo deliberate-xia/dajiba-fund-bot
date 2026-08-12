@@ -5,7 +5,7 @@
   "extra_alert_drop_threshold": -0.05,
   "extra_alert_change_threshold": 0.03,
   "stop_loss_multipliers": { "broad_market": 2.5, "sector": 3.5 },
-  "take_profit_multipliers": { "broad_market": 5.0, "sector": 6.0 },
+  "take_profit_multipliers": { "broad_market": 7.0, "sector": 6.0 },
   "hard_stop_loss_pct": { "broad_market": -0.08, "sector": -0.12 },
   "trend_score_thresholds": { "green": 65, "red": 35 },
   "timezone": "Asia/Shanghai",

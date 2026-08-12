@@ -119,8 +119,8 @@ def _build_portfolio_overview(analyses: list, portfolio: dict, holdings: dict) -
             sl_distance = a.stop_distance_pct
             tp_str = f"{a.take_profit_price:.4f}"
             sl_str = f"{a.effective_stop:.4f}"
-            if tp_distance < 5:
-                tp_str += " 🔔"  # Close to take-profit
+            if tp_distance > -5:
+                tp_str += " 🔔"  # Within 5% below (or already above) take-profit
             if sl_distance < 5:
                 sl_str += " ⚠️"  # Close to stop-loss
             signal_str = f"{_traffic_icon(a.trend_light)} {_signal_label(a.signal_type)}"

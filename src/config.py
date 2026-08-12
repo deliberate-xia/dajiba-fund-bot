@@ -97,7 +97,7 @@ class UserPreferences:
     extra_alert_drop_threshold: float = -0.05
     extra_alert_change_threshold: float = 0.03
     stop_loss_multipliers: dict = field(default_factory=lambda: {"broad_market": 2.5, "sector": 3.5})
-    take_profit_multipliers: dict = field(default_factory=lambda: {"broad_market": 5.0, "sector": 6.0})
+    take_profit_multipliers: dict = field(default_factory=lambda: {"broad_market": 7.0, "sector": 6.0})
     hard_stop_loss_pct: dict = field(default_factory=lambda: {"broad_market": -0.08, "sector": -0.12})
     trend_score_thresholds: dict = field(default_factory=lambda: {"green": 65, "red": 35})
     timezone: str = "Asia/Shanghai"
