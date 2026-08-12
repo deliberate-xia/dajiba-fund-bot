@@ -35,7 +35,9 @@ class FundHolding:
 
     @property
     def total_invested(self) -> float:
-        return sum(lot["amount_cny"] for lot in self.cost_lots if lot.get("nav_confirmed", False))
+        """Net cash still committed: purchases minus redemptions (cash flow)."""
+        return sum(lot["amount_cny"] for lot in self.cost_lots
+                   if lot.get("nav_confirmed", False) and lot.get("amount_cny") is not None)
 
     @property
     def total_shares(self) -> float:
@@ -43,15 +45,43 @@ class FundHolding:
                    if lot.get("nav_confirmed", False) and lot.get("shares") is not None)
 
     @property
+    def total_purchase_cost(self) -> float:
+        """Total cash spent on purchases (redemptions excluded)."""
+        return sum(lot["amount_cny"] for lot in self.cost_lots
+                   if lot.get("nav_confirmed", False)
+                   and (lot.get("amount_cny") or 0) > 0)
+
+    @property
     def weighted_entry_nav(self) -> float | None:
-        """Weighted average entry NAV across confirmed lots."""
-        confirmed = [l for l in self.cost_lots if l.get("nav_confirmed", False)]
-        if not confirmed:
+        """Average NAV of purchase lots only (redemptions must NOT be mixed in —
+        selling at a higher NAV would otherwise distort the cost basis downward)."""
+        purchases = [l for l in self.cost_lots
+                     if l.get("nav_confirmed", False)
+                     and (l.get("amount_cny") or 0) > 0
+                     and l.get("nav_at_purchase") is not None]
+        if not purchases:
             return None
-        total_amt = sum(l["amount_cny"] for l in confirmed)
+        total_amt = sum(l["amount_cny"] for l in purchases)
         if total_amt == 0:
             return None
-        return sum(l["amount_cny"] * l["nav_at_purchase"] for l in confirmed) / total_amt
+        return sum(l["amount_cny"] * l["nav_at_purchase"] for l in purchases) / total_amt
+
+    @property
+    def realized_pnl(self) -> float:
+        """Realized PnL from redemption lots: proceeds − cost of redeemed shares."""
+        avg_nav = self.weighted_entry_nav
+        if avg_nav is None or avg_nav <= 0:
+            return 0.0
+        realized = 0.0
+        for l in self.cost_lots:
+            if not l.get("nav_confirmed", False):
+                continue
+            shares = l.get("shares") or 0
+            amount = l.get("amount_cny") or 0
+            if shares < 0 and amount < 0:
+                proceeds = -amount
+                realized += proceeds - (-shares * avg_nav)
+        return realized
 
     @property
     def has_pending_lots(self) -> bool:
@@ -71,6 +101,22 @@ class UserPreferences:
     hard_stop_loss_pct: dict = field(default_factory=lambda: {"broad_market": -0.08, "sector": -0.12})
     trend_score_thresholds: dict = field(default_factory=lambda: {"green": 65, "red": 35})
     timezone: str = "Asia/Shanghai"
+
+    # ── 分批止盈 + 移动止盈 ──
+    # Tighter ATR multipliers for trailing stop on the remaining position after
+    # partial take-profit.  The remaining shares ride the trend; this stop is
+    # what kicks you out when the trend finally reverses.
+    trailing_stop_post_profit_multipliers: dict = field(
+        default_factory=lambda: {"broad_market": 1.5, "sector": 2.0}
+    )
+    # Trend-strength → recommended sell ratio when take-profit triggers.
+    # Higher trend score = sell less (let profits run).
+    # Evaluated top-down: first matching min_trend_score wins.
+    take_profit_sell_ratios: list = field(default_factory=lambda: [
+        {"min_trend_score": 75, "sell_ratio": 0.30},
+        {"min_trend_score": 65, "sell_ratio": 0.50},
+        {"min_trend_score": 0,  "sell_ratio": 0.70},
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -151,4 +197,6 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         hard_stop_loss_pct=raw.get("hard_stop_loss_pct", {}),
         trend_score_thresholds=raw.get("trend_score_thresholds", {}),
         timezone=raw.get("timezone", "Asia/Shanghai"),
+        trailing_stop_post_profit_multipliers=raw.get("trailing_stop_post_profit_multipliers", {}),
+        take_profit_sell_ratios=raw.get("take_profit_sell_ratios", []),
     )

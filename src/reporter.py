@@ -75,12 +75,13 @@ def _build_portfolio_overview(analyses: list, portfolio: dict, holdings: dict) -
     lines = [
         "## 📊 持仓总览",
         "",
-        "| 基金 | 净值 | 日涨跌 | 持有收益 | 信号 |",
-        "|------|------|--------|----------|------|",
+        "| 基金 | 净值 | 日涨跌 | 持有收益 | 🎯止盈 | 🛡️止损 | 信号 |",
+        "|------|------|--------|----------|---------|---------|------|",
     ]
 
     total_invested = 0.0
     total_value = 0.0
+    total_realized = 0.0
 
     for a in analyses:
         if a is None:
@@ -91,9 +92,11 @@ def _build_portfolio_overview(analyses: list, portfolio: dict, holdings: dict) -
             continue
 
         if a.signal_type == "pending":
-            nav_str = "⏳ 待确认"
+            nav_str = "⏳"
             change_str = "—"
             pnl_str = "—"
+            tp_str = "—"
+            sl_str = "—"
             signal_str = "⏳ 等待"
         else:
             nav_str = f"{a.current_nav:.4f}"
@@ -101,25 +104,38 @@ def _build_portfolio_overview(analyses: list, portfolio: dict, holdings: dict) -
             shares = holding.total_shares
             if shares > 0:
                 mkt_value = a.current_nav * shares
-                invested = holding.total_invested
-                pnl = mkt_value - invested
-                pnl_pct = (mkt_value / invested - 1) * 100 if invested > 0 else 0
+                # Cost basis of remaining position = shares × average purchase NAV
+                cost = shares * (a.entry_nav_weighted or 0)
+                pnl = mkt_value - cost + holding.realized_pnl
+                pnl_pct = (pnl / cost * 100) if cost > 0 else 0
                 pnl_str = f"{fmt_cny(pnl)} ({fmt_pct(pnl_pct)})"
                 total_value += mkt_value
-                total_invested += invested
+                total_invested += cost
+                total_realized += holding.realized_pnl
             else:
                 pnl_str = "—"
+            # Stop-loss / take-profit with distance indicator
+            tp_distance = a.profit_distance_pct
+            sl_distance = a.stop_distance_pct
+            tp_str = f"{a.take_profit_price:.4f}"
+            sl_str = f"{a.effective_stop:.4f}"
+            if tp_distance < 5:
+                tp_str += " 🔔"  # Close to take-profit
+            if sl_distance < 5:
+                sl_str += " ⚠️"  # Close to stop-loss
             signal_str = f"{_traffic_icon(a.trend_light)} {_signal_label(a.signal_type)}"
 
         lines.append(
             f"| {a.fund_code} {a.fund_name} "
-            f"| {nav_str} | {change_str} | {pnl_str} | {signal_str} |"
+            f"| {nav_str} | {change_str} | {pnl_str} | {tp_str} | {sl_str} | {signal_str} |"
         )
 
     lines.append("")
     if total_invested > 0:
-        total_pnl = total_value - total_invested
-        total_pnl_pct = (total_value / total_invested - 1) * 100
+        # Total PnL includes realized gains from partial redemptions —
+        # they're real money, just no longer in the portfolio.
+        total_pnl = total_value - total_invested + total_realized
+        total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
         lines.append(
             f"💰 总市值：{fmt_cny(total_value, signed=False)} "
             f"| 总投入：{fmt_cny(total_invested, signed=False)} "
@@ -173,10 +189,14 @@ def _build_fund_detail(a, holding) -> str:
             lines.append(f"| 持有份额 | {shares:,.2f} 份 |")
             lines.append(f"| 成本净值 | {a.entry_nav_weighted:.4f} |")
             mkt_value = a.current_nav * shares
-            invested = holding.total_invested
-            pnl = mkt_value - invested
-            pnl_pct = (mkt_value / invested - 1) * 100
-            lines.append(f"| 持仓盈亏 | **{fmt_cny(pnl)} ({fmt_pct(pnl_pct)})** |")
+            cost = shares * (a.entry_nav_weighted or 0)
+            unrealized = mkt_value - cost
+            realized = holding.realized_pnl
+            lines.append(f"| 未实现盈亏 | **{fmt_cny(unrealized)} ({fmt_pct(unrealized / cost * 100) if cost > 0 else '—'})** |")
+            if abs(realized) >= 0.01:
+                lines.append(f"| 已实现盈亏 | {fmt_cny(realized)} |")
+            total_pnl = unrealized + realized
+            lines.append(f"| 总盈亏 | **{fmt_cny(total_pnl)} ({fmt_pct(total_pnl / cost * 100) if cost > 0 else '—'})** |")
 
     lines.extend(["", "### 📈 阶段表现", ""])
 
@@ -200,12 +220,41 @@ def _build_fund_detail(a, holding) -> str:
         "### ⚙️ 风控状态",
         "",
         f"- 🛡️ 止损线：**{a.effective_stop:.4f}**（距当前 {fmt_pct(a.stop_distance_pct)}）",
-        f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（还需上涨 {fmt_pct(a.profit_distance_pct)}）",
     ])
+    # Take-profit line: "还需上涨 X%" only makes sense while BELOW the line.
+    if a.profit_distance_pct < 0:
+        to_go = (a.take_profit_price / a.current_nav - 1) * 100 if a.current_nav > 0 else 0
+        lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（还需上涨 {fmt_pct(to_go)}）")
+    else:
+        lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（已突破，当前高出 {fmt_pct(a.profit_distance_pct)}）")
 
-    if a.stop_distance_pct > 10:
+    # ── 分批止盈信息 ──
+    if a.profit_tier >= 1:
+        sell_pct = int(a.sell_ratio * 100)
+        keep_pct = 100 - sell_pct
+        ts = a.trailing_stop_post_profit
+        if ts > 0:
+            ts_dist = (a.current_nav / ts - 1) * 100
+            lines.append(f"- 📤 触发后建议卖出 **{sell_pct}%**（{a.profit_strategy_reason}）")
+            lines.append(f"- 📥 剩余 **{keep_pct}%** 移动止盈线：**{ts:.4f}**（距当前 {ts_dist:+.1f}%）")
+        if a.profit_tier == 2:
+            lines.append("- 🔔 **止盈已触发**，请按上述比例执行")
+        else:
+            lines.append("- ⏳ 接近止盈目标，可提前准备操作计划")
+
+    if a.profit_tier == 2:
+        # Profit already triggered: the operative exit is the trailing stop,
+        # not the "stop-loss" line — don't scare the user about it.
+        lines.append("- 🛡️ 止盈已触发，剩余仓位由移动止盈线保护，无需理会止损距离")
+    elif a.profit_tier == 1:
+        # Nearing take-profit: frame the message around the profit target.
+        if a.stop_distance_pct > 5:
+            lines.append("- ⏳ 距止盈目标一步之遥，止损距离安全")
+        else:
+            lines.append("- ⏳ 接近止盈目标；止损线也较近，注意触发前的回撤风险")
+    elif a.stop_distance_pct > 10:
         lines.append("- ✅ 安全区间运行，未触发风控")
-    elif a.stop_distance_pct > 3:
+    elif a.stop_distance_pct > 2:
         lines.append("- ⚠️ 正常区间，但建议关注止损距离")
     else:
         lines.append("- 🔴 接近止损线，请密切关注！")
@@ -355,17 +404,23 @@ def build_daily_report(
     missed_days: list[date] | None = None,
     bot_name: str = "大基吧",
     week_data: dict | None = None,
+    macro_brief: str = "",
 ) -> str:
     """
     Generate the complete Markdown daily report.
 
     If is_friday and week_data is provided, includes a weekly review section
     with operation evaluation and forward-looking notes.
+    If macro_brief is provided, includes a macro policy section.
     """
     sections = [
         _build_header(report_date, bot_name, missed_days),
         _build_portfolio_overview(analyses, portfolio, holdings),
     ]
+
+    # Macro policy section (after overview, before per-fund details)
+    if macro_brief:
+        sections.append(macro_brief)
 
     # Weekly review goes after portfolio overview but before per-fund details
     if is_friday and week_data:

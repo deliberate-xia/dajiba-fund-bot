@@ -47,6 +47,12 @@ class FundAnalysis:
     stop_distance_pct: float = 0.0
     profit_distance_pct: float = 0.0
 
+    # ── 分批止盈 + 移动止盈 ──
+    profit_tier: int = 0             # 0=none, 1=nearing, 2=triggered
+    sell_ratio: float = 0.50         # recommended sell % when profit triggers (trend-adjusted)
+    profit_strategy_reason: str = "" # why this sell ratio (trend-based)
+    trailing_stop_post_profit: float = 0.0  # trailing stop for remaining position post-profit
+
     # Trend score
     trend_score: int = 0
     trend_light: str = "yellow"    # "green" | "yellow" | "red"
@@ -128,7 +134,8 @@ def compute_stop_loss_levels(
     entry_date,
     atr: float,
     volatility_profile: str,
-    multipliers: dict,
+    stop_multipliers: dict,
+    profit_multipliers: dict,
     hard_stop_pct_map: dict,
 ) -> dict:
     """
@@ -136,6 +143,12 @@ def compute_stop_loss_levels(
 
     highest_nav_since_entry is computed only from the user's entry date onward,
     not from the fund's entire history.
+
+    Equity profiles (broad_market / sector): ATR-based trailing stop +
+    ATR%-based take-profit target.
+    Bond profile: fixed percentage lines (ATR is meaningless for bond funds —
+    a tiny ATR would place the stop right under the price and scream
+    "near stop-loss" every single day).
 
     Returns dict with:
         dynamic_stop, hard_stop, effective_stop,
@@ -151,25 +164,34 @@ def compute_stop_loss_levels(
         nav_since_entry = nav_series
     highest_nav = float(nav_since_entry.max())
 
-    stop_mult = multipliers.get(volatility_profile, 2.5)
-    profit_mult = multipliers.get(volatility_profile, 5.0)
+    stop_mult = stop_multipliers.get(volatility_profile, 2.5)
+    profit_mult = profit_multipliers.get(volatility_profile, 5.0)
     hard_pct = hard_stop_pct_map.get(volatility_profile, -0.08)
 
     # Fallback ATR: if ATR is 0 (insufficient data), use 2% of current NAV
     effective_atr = atr if atr > 0 else current_nav * 0.02
 
-    # Dynamic trailing stop
-    dynamic_stop = highest_nav - (effective_atr * stop_mult)
+    if volatility_profile == "bond":
+        # Fixed percentage lines: bond funds move in fractions of a percent.
+        # stop: -5%, take-profit: +8% relative to entry.
+        hard_stop = entry_nav * (1 + hard_stop_pct_map.get("bond", -0.05))
+        dynamic_stop = hard_stop
+        take_profit_price = entry_nav * (1 + 0.08)
+    else:
+        # Dynamic trailing stop
+        dynamic_stop = highest_nav - (effective_atr * stop_mult)
 
-    # Hard stop
-    hard_stop = entry_nav * (1 + hard_pct)  # hard_pct is negative
+        # Hard stop
+        hard_stop = entry_nav * (1 + hard_pct)  # hard_pct is negative
 
-    # Effective = more conservative (higher) of the two
-    effective_stop = max(dynamic_stop, hard_stop)
+        # Take-profit: entry * (1 + ATR% as decimal * multiplier)
+        atr_pct_decimal = effective_atr / entry_nav if entry_nav > 0 else 0.02
+        take_profit_price = entry_nav * (1 + atr_pct_decimal * profit_mult)
 
-    # Take-profit: entry * (1 + ATR% as decimal * multiplier)
-    atr_pct_decimal = effective_atr / entry_nav if entry_nav > 0 else 0.02
-    take_profit_price = entry_nav * (1 + atr_pct_decimal * profit_mult)
+    # Effective = more conservative (higher) of the two, but never above the
+    # take-profit line (a stop above the profit target would make the two
+    # lines cross and render the display nonsense).
+    effective_stop = min(max(dynamic_stop, hard_stop), take_profit_price)
 
     # Distance to stop/profit
     stop_distance_pct = (current_nav / effective_stop - 1) * 100 if effective_stop > 0 else 100
@@ -189,8 +211,87 @@ def compute_stop_loss_levels(
         "highest_nav_since_entry": highest_nav,
         "stop_triggered": has_enough_data and current_nav <= effective_stop,
         "profit_triggered": current_nav >= take_profit_price,
-        "near_stop": has_enough_data and 0 < stop_distance_pct <= 3,
+        # Near-stop band must sit INSIDE the ATR trailing cushion, otherwise a
+        # trailing stop (2.5×ATR below the high) makes "near stop" fire every
+        # single day while the fund is at its highs.
+        "near_stop": has_enough_data and 0 < stop_distance_pct <= 2,
         "near_profit": -3 <= profit_distance_pct < 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tiered take-profit strategy (trend-adjusted + trailing stop)
+# ---------------------------------------------------------------------------
+
+def compute_profit_strategy(
+    nav_series: pd.Series,
+    entry_nav: float,
+    entry_date,
+    atr: float,
+    volatility_profile: str,
+    stop_info: dict,
+    trend_score: int,
+    preferences,          # UserPreferences
+) -> dict:
+    """
+    Compute tiered take-profit strategy.
+
+    When take-profit triggers:
+      1. Sell ratio depends on trend strength (stronger trend → sell less)
+      2. Remaining position switches to a tighter trailing stop instead of a
+         fixed take-profit target — lets profits run while protecting gains.
+
+    Returns:
+        profit_tier: 0=normal, 1=nearing-profit, 2=profit-triggered
+        sell_ratio: recommended sell percentage (0.30-0.70)
+        trailing_stop_post_profit: trailing stop price for remaining shares
+    """
+    # ── Determine profit tier ──
+    if stop_info.get("profit_triggered"):
+        profit_tier = 2
+    elif stop_info.get("near_profit"):
+        profit_tier = 1
+    else:
+        profit_tier = 0
+
+    # ── Trend-adjusted sell ratio ──
+    sell_ratio = 0.50  # default fallback
+    sell_reason = ""
+    for tier in preferences.take_profit_sell_ratios:
+        if trend_score >= tier["min_trend_score"]:
+            sell_ratio = tier["sell_ratio"]
+            break
+
+    if trend_score >= 75:
+        sell_reason = "趋势强劲，小比例止盈让利润奔跑"
+    elif trend_score >= 65:
+        sell_reason = "趋势良好，标准比例止盈锁利"
+    else:
+        sell_reason = "趋势偏弱，大比例止盈落袋为安"
+
+    # ── Trailing stop for remaining position ──
+    post_mult = preferences.trailing_stop_post_profit_multipliers.get(
+        volatility_profile, 1.5
+    )
+    current_nav = float(nav_series.iloc[-1])
+    effective_atr = atr if atr > 0 else current_nav * 0.02
+    highest = stop_info["highest_nav_since_entry"]
+
+    # Trailing stop: highest since entry minus tighter ATR multiple.
+    # Floor at entry_nav — once partial profit is taken, remaining position
+    # should never turn into a loss.
+    trailing_stop = max(
+        highest - effective_atr * post_mult,
+        entry_nav
+    )
+
+    return {
+        "profit_tier": profit_tier,
+        "sell_ratio": sell_ratio,
+        "sell_reason": sell_reason,
+        "trailing_stop_post_profit": trailing_stop,
+        "trailing_stop_distance_pct": (current_nav / trailing_stop - 1) * 100
+            if trailing_stop > 0 else 100,
     }
 
 
@@ -359,9 +460,22 @@ def generate_signal(
 
     # Check stop/profit triggers first
     if stop_info.get("profit_triggered"):
+        sell_pct = int(analysis.sell_ratio * 100)
+        keep_pct = 100 - sell_pct
+        ts = analysis.trailing_stop_post_profit
+        # Compute distance from current NAV to trailing stop
+        ts_dist_pct = (analysis.current_nav / ts - 1) * 100 if ts > 0 else 0
         return {
             "signal_type": "profit",
-            "signal_message": "🎉 已触及止盈线！建议分批赎回，不要贪心，落袋为安。可先赎回50%锁定利润，剩余部分设置移动止盈。",
+            "signal_message": (
+                f"🎉 已触及止盈线（{analysis.take_profit_price:.4f}）！\n\n"
+                f"**分批止盈策略**：{analysis.profit_strategy_reason}\n"
+                f"- 📤 建议卖出 **{sell_pct}%** 锁定利润\n"
+                f"- 📥 保留 **{keep_pct}%** 仓位继续持有\n"
+                f"- 🛡️ 剩余仓位移动止盈线：**{ts:.4f}**"
+                f"（距当前 {ts_dist_pct:+.1f}%）\n"
+                f"- 如净值跌破移动止盈线，则清仓剩余部分，本轮交易结束"
+            ),
             "signal_urgency": "alert",
         }
 
@@ -375,14 +489,22 @@ def generate_signal(
     if stop_info.get("near_stop"):
         return {
             "signal_type": "reduce",
-            "signal_message": "⚠️ 净值已接近止损位（距止损仅3%以内）。如继续下跌建议减仓控制风险，保护本金是第一位的。",
+            "signal_message": "⚠️ 净值已接近止损位（距止损仅2%以内）。如继续下跌建议减仓控制风险，保护本金是第一位的。",
             "signal_urgency": "warning",
         }
 
     if stop_info.get("near_profit"):
+        sell_pct = int(analysis.sell_ratio * 100)
+        ts = analysis.trailing_stop_post_profit
+        ts_dist_pct = (analysis.current_nav / ts - 1) * 100 if ts > 0 else 0
         return {
             "signal_type": "reduce",
-            "signal_message": "已接近止盈目标位，可考虑分批赎回锁定部分利润。建议先卖30%-50%，剩下继续持有博取更多收益。",
+            "signal_message": (
+                f"已接近止盈目标位（{analysis.take_profit_price:.4f}），距离触发还需上涨 "
+                f"{abs(analysis.profit_distance_pct):.1f}%。\n\n"
+                f"**建议提前准备**：触发后卖出 {sell_pct}%（{analysis.profit_strategy_reason}），"
+                f"剩余仓位移动止盈线 {ts:.4f}。"
+            ),
             "signal_urgency": "warning",
         }
 
@@ -501,6 +623,7 @@ def analyze_fund(
         atr,
         holding.volatility_profile,
         preferences.stop_loss_multipliers,
+        preferences.take_profit_multipliers,
         preferences.hard_stop_loss_pct,
     )
     analysis.dynamic_stop = stop_info["dynamic_stop"]
@@ -512,11 +635,20 @@ def analyze_fund(
     analysis.highest_nav_since_entry = stop_info["highest_nav_since_entry"]
 
     # ---- Benchmark ----
+    # Guard against misaligned series: comparing the fund's 2026 returns
+    # against a benchmark frozen in 2024 produces garbage "超额" numbers.
+    bm_close = None
     if not benchmark_df.empty:
-        bm_close = benchmark_df.set_index("date")["close"]
-        # Align dates approximately for comparison
-    else:
-        bm_close = None
+        try:
+            fund_last = pd.to_datetime(nav_df["date"].iloc[-1])
+            bm_last = pd.to_datetime(benchmark_df["date"].iloc[-1])
+            if (fund_last - bm_last).days > 10:
+                print(f"  WARNING: benchmark {holding.benchmark_name} is stale "
+                      f"(latest {bm_last.date()}), skipping benchmark comparison")
+            else:
+                bm_close = benchmark_df.set_index("date")["close"]
+        except (IndexError, ValueError) as e:
+            print(f"  WARNING: benchmark alignment failed: {e}")
 
     # ---- Trend score ----
     trend = compute_trend_score(nav_series, bm_close, preferences.trend_score_thresholds)
@@ -559,6 +691,22 @@ def analyze_fund(
         else:
             parts.append(f"❌ {period}跑输 {delta:.2f}%")
     analysis.beats_benchmark_text = " | ".join(parts) if parts else "数据不足"
+
+    # ---- Tiered take-profit strategy ----
+    profit_strategy = compute_profit_strategy(
+        nav_series,
+        entry_nav,
+        entry_date,
+        atr,
+        holding.volatility_profile,
+        stop_info,
+        trend["total_score"],
+        preferences,
+    )
+    analysis.profit_tier = profit_strategy["profit_tier"]
+    analysis.sell_ratio = profit_strategy["sell_ratio"]
+    analysis.profit_strategy_reason = profit_strategy["sell_reason"]
+    analysis.trailing_stop_post_profit = profit_strategy["trailing_stop_post_profit"]
 
     # ---- Signal ----
     signal = generate_signal(analysis, stop_info, trend, ma_info)

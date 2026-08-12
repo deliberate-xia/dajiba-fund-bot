@@ -8,5 +8,11 @@
   "take_profit_multipliers": { "broad_market": 5.0, "sector": 6.0 },
   "hard_stop_loss_pct": { "broad_market": -0.08, "sector": -0.12 },
   "trend_score_thresholds": { "green": 65, "red": 35 },
-  "timezone": "Asia/Shanghai"
+  "timezone": "Asia/Shanghai",
+  "trailing_stop_post_profit_multipliers": { "broad_market": 1.5, "sector": 2.0 },
+  "take_profit_sell_ratios": [
+    { "min_trend_score": 75, "sell_ratio": 0.30 },
+    { "min_trend_score": 65, "sell_ratio": 0.50 },
+    { "min_trend_score": 0, "sell_ratio": 0.70 }
+  ]
 }

@@ -14,6 +14,14 @@
         "shares": 317.7,
         "nav_confirmed": true,
         "note": "首次建仓¥1000 → 7/28赎回1/3转投电池"
+      },
+      {
+        "date": "2026-08-10",
+        "amount_cny": -344.57,
+        "nav_at_purchase": 2.1713,
+        "shares": -158.85,
+        "nav_confirmed": true,
+        "note": "8/7 15:00后赎回1/2→余额宝→全部转入安信稳健，周一净值成交"
       }
     ],
     "skip_tracking": false
@@ -37,8 +45,8 @@
       {
         "date": "2026-07-28",
         "amount_cny": 333.33,
-        "nav_at_purchase": 1.3852,
-        "shares": 240.64,
+        "nav_at_purchase": 1.3728,
+        "shares": 242.81,
         "nav_confirmed": true,
         "note": "沪深300赎回1/3转入，待确认净值"
       }
@@ -60,25 +68,92 @@
         "shares": 741.43,
         "nav_confirmed": true,
         "note": "7月24日购买（含光伏清仓转投¥200）"
+      },
+      {
+        "date": "2026-08-07",
+        "amount_cny": 100.0,
+        "nav_at_purchase": 0.5642,
+        "shares": 177.24,
+        "nav_confirmed": true,
+        "note": "8月7日加仓¥100"
+      },
+      {
+        "date": "2026-08-11",
+        "amount_cny": 99.9,
+        "nav_at_purchase": 0.5781,
+        "shares": 172.81,
+        "nav_confirmed": true,
+        "note": "8月11日加仓¥99.9"
       }
     ],
     "skip_tracking": false
   },
-  "010956": {
-    "fund_code": "010956",
-    "fund_name": "天弘中证智能汽车主题指数C",
+  "017140": {
+    "fund_code": "017140",
+    "fund_name": "华宝中证有色金属ETF联接A",
     "fund_type": "sector_index",
     "volatility_profile": "sector",
-    "benchmark_index": "930721",
-    "benchmark_name": "中证智能汽车主题指数",
+    "benchmark_index": "930708",
+    "benchmark_name": "中证有色金属指数",
     "cost_lots": [
       {
-        "date": "2026-07-24",
-        "amount_cny": 400.0,
-        "nav_at_purchase": 0.8988,
-        "shares": 445.04,
+        "date": "2026-08-03",
+        "amount_cny": 405.59,
+        "nav_at_purchase": 1.5387,
+        "shares": 263.59,
         "nav_confirmed": true,
-        "note": "7月24日购买"
+        "note": "8/3转换转入，8/4确认净值"
+      },
+      {
+        "date": "2026-08-10",
+        "amount_cny": -113.89,
+        "nav_at_purchase": 1.7283,
+        "shares": -65.9,
+        "nav_confirmed": true,
+        "note": "8/7 15:00后转换转出65.90份→安信稳健，周一净值成交"
+      }
+    ],
+    "skip_tracking": false
+  },
+  "001338": {
+    "fund_code": "001338",
+    "fund_name": "安信稳健增值混合C",
+    "fund_type": "balanced",
+    "volatility_profile": "bond",
+    "benchmark_index": "000012",
+    "benchmark_name": "上证国债指数",
+    "cost_lots": [
+      {
+        "date": "2026-08-07",
+        "amount_cny": 1000.0,
+        "nav_at_purchase": 1.778,
+        "shares": 562.43,
+        "nav_confirmed": true,
+        "note": "8/7 15:00后建仓核心舱，周一净值成交"
+      },
+      {
+        "date": "2026-08-11",
+        "amount_cny": 1000.0,
+        "nav_at_purchase": 1.778,
+        "shares": 562.43,
+        "nav_confirmed": true,
+        "note": "8月11日加仓¥1000"
+      },
+      {
+        "date": "2026-08-10",
+        "amount_cny": 112.90,
+        "nav_at_purchase": 1.778,
+        "shares": 63.50,
+        "nav_confirmed": true,
+        "note": "有色金属转换转入63.50份，周一净值成交"
+      },
+      {
+        "date": "2026-08-10",
+        "amount_cny": 344.57,
+        "nav_at_purchase": 1.778,
+        "shares": 193.80,
+        "nav_confirmed": true,
+        "note": "沪深300赎回转入193.80份，周一净值成交"
       }
     ],
     "skip_tracking": false

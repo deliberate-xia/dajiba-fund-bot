@@ -95,17 +95,29 @@ def _fetch_index_raw(index_code: str) -> pd.DataFrame:
     Fetch daily index close prices.
 
     Supports:
-      - CSI 300 ("000300") via ak.stock_zh_index_daily_em()
+      - CSI 300 ("000300") via ak.stock_zh_index_hist_csindex()
       - CSI Battery ("931719") via ak.stock_zh_index_hist_csindex()
       - Others: tries CSIndex format first, falls back to Eastmoney
+
+    IMPORTANT: ak.stock_zh_index_hist_csindex() has hardcoded default
+    start_date="20180526" / end_date="20240604" in some akshare versions.
+    Without explicit dates the call silently returns data frozen at 2024-06-04,
+    which corrupts every benchmark comparison.  Always pass explicit dates.
     """
+    start = "20180101"
+    end = (date.today() + timedelta(days=1)).strftime("%Y%m%d")
+
     # Route all indices through CSIndex API (csindex.com.cn) first.
     # stock_zh_index_daily_em hits eastmoney.com which may be blocked by proxy.
     if index_code == "931719":
-        df = ak.stock_zh_index_hist_csindex(symbol="931719")
+        df = ak.stock_zh_index_hist_csindex(
+            symbol="931719", start_date=start, end_date=end
+        )
     else:
         try:
-            df = ak.stock_zh_index_hist_csindex(symbol=index_code)
+            df = ak.stock_zh_index_hist_csindex(
+                symbol=index_code, start_date=start, end_date=end
+            )
         except Exception:
             df = ak.stock_zh_index_daily_em(symbol=f"sh{index_code}")
 
@@ -131,6 +143,15 @@ def _fetch_index_raw(index_code: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"]).dt.date
     df["close"] = pd.to_numeric(df["close"], errors="coerce")
     df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
+
+    # Staleness guard: never return data that lags the market by > 10 days.
+    # (This protects against APIs silently serving truncated/frozen datasets.)
+    latest = df["date"].iloc[-1]
+    if (date.today() - latest).days > 10:
+        raise ValueError(
+            f"Index {index_code} data is stale (latest={latest}); refusing to use it"
+        )
+
     return df[["date", "close"]]
 
 

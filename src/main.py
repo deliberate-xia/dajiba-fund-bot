@@ -24,7 +24,6 @@ from src.fetcher import (
     fetch_fund_nav_history,
     fetch_index_history,
     fetch_trade_calendar,
-    check_latest_nav,
 )
 from src.store import (
     load_nav_history,
@@ -37,6 +36,7 @@ from src.store import (
     detect_missed_runs,
 )
 from src.analyzer import analyze_fund, compute_portfolio_summary
+from src.macro import fetch_macro_snapshot, build_macro_brief
 from src.reporter import build_daily_report, build_extra_alert
 from src.pusher import send_report, send_alert
 
@@ -49,46 +49,69 @@ def _get_data_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "data"
 
 
-def _check_pending_confirmations(
-    holdings: dict[str, FundHolding],
-    data_dir: Path,
-) -> bool:
+def _confirm_pending_lots(holding: FundHolding, nav_df) -> bool:
     """
-    Check if any pending cost lots now have confirmed NAVs.
-    Returns True if any lot was confirmed (holdings mutated in-place).
-    """
-    changed = False
-    today = date.today()
+    Confirm any pending cost lots using the fund's NAV history.
 
-    for code, holding in holdings.items():
-        if not holding.skip_tracking:
+    The confirmation NAV is the NAV on the lot's actual confirmation date:
+      - orders submitted after 15:00 confirm at the NEXT trading day's NAV
+      - orders submitted before 15:00 confirm at the same day's NAV
+
+    (Using "the latest NAV available" instead would silently confirm lots at
+    a wrong price whenever the bot misses a few runs.)
+    Returns True if any lot was confirmed (holding mutated in-place).
+    """
+    if nav_df is None or nav_df.empty or not holding.has_pending_lots:
+        return False
+
+    changed = False
+    nav_dates = nav_df["date"].tolist()
+
+    for lot in holding.cost_lots:
+        if lot.get("nav_confirmed", True):
             continue
 
-        for lot in holding.cost_lots:
-            if lot.get("nav_confirmed", True):
-                continue
+        lot_date_str = lot.get("date")
+        if not lot_date_str:
+            continue
+        try:
+            lot_date = date.fromisoformat(lot_date_str)
+        except (ValueError, TypeError):
+            continue
 
-            print(f"[{code}] Checking pending confirmation for lot {lot.get('date')}...")
-            latest = check_latest_nav(code)
-            if latest is None:
-                print(f"[{code}]   NAV not yet available")
-                continue
+        note = lot.get("note", "")
+        after_cutoff = "15:00后" in note or "15:00 后" in note
+        strict = after_cutoff
 
-            # The lot date is the purchase submission date.
-            # After 15:00 cutoff, NAV is set on the NEXT trading day.
-            # We check if the latest NAV date is >= the expected confirmation date.
-            lot_date = date.fromisoformat(lot["date"]) if lot.get("date") else None
-            if lot_date and latest["date"] >= lot_date:
-                lot["nav_at_purchase"] = latest["nav"]
-                lot["shares"] = round(lot["amount_cny"] / latest["nav"], 2)
-                lot["nav_confirmed"] = True
-                changed = True
-                print(f"[{code}]   ✅ NAV confirmed: {latest['nav']} on {latest['date']}")
+        confirm_nav = None
+        confirm_date = None
+        for d in nav_dates:
+            if d > lot_date or (not strict and d >= lot_date):
+                row = nav_df[nav_df["date"] == d].iloc[0]
+                confirm_nav = float(row["nav"])
+                confirm_date = d
+                break
 
-        # If all lots confirmed, enable tracking
-        if not holding.has_pending_lots:
-            holding.skip_tracking = False
-            print(f"[{code}] All lots confirmed — tracking enabled.")
+        if confirm_nav is None:
+            print(f"[{holding.fund_code}] Pending lot {lot_date_str}: "
+                  f"confirmation NAV not available yet")
+            continue
+
+        lot["nav_at_purchase"] = confirm_nav
+        if lot.get("amount_cny") is not None:
+            # Purchase lot: calculate shares from amount
+            lot["shares"] = round(lot["amount_cny"] / confirm_nav, 2)
+        elif lot.get("shares") is not None:
+            # Redemption lot: calculate amount from shares (will be negative)
+            lot["amount_cny"] = round(lot["shares"] * confirm_nav, 2)
+        lot["nav_confirmed"] = True
+        changed = True
+        print(f"[{holding.fund_code}] ✅ Lot {lot_date_str} confirmed: "
+              f"NAV {confirm_nav} on {confirm_date}")
+
+    if changed and not holding.has_pending_lots:
+        holding.skip_tracking = False
+        print(f"[{holding.fund_code}] All lots confirmed — tracking enabled.")
 
     return changed
 
@@ -258,11 +281,7 @@ def main():
     user_token = os.environ.get("PUSHPLUS_USER_TOKEN", prefs.pushplus_user_token)
     topic_token = os.environ.get("PUSHPLUS_TOPIC_TOKEN", prefs.pushplus_topic_token)
 
-    # ---- 3. Check pending confirmations ----
-    changed = _check_pending_confirmations(holdings, data_dir)
-    if changed:
-        save_holdings(holdings)
-        print("[Main] Holdings updated with confirmed NAVs")
+    # ---- 3. (Pending lot confirmation happens per-fund after NAV fetch) ----
 
     # ---- 4. Detect missed runs ----
     missed = detect_missed_runs(
@@ -276,6 +295,7 @@ def main():
     # ---- 5. Fetch & analyze each fund ----
     analyses = []
     alerts_to_send = []
+    holdings_changed = False
     is_first_run = (run_state.get("total_runs", 0) == 0)
 
     for fund_code, holding in holdings.items():
@@ -322,6 +342,10 @@ def main():
         save_nav_history(fund_code, merged_nav, data_dir)
         print(f"  Saved {len(merged_nav)} total NAV records ({new_points} new)")
 
+        # Confirm any pending cost lots using the exact confirmation-date NAV
+        if _confirm_pending_lots(holding, merged_nav):
+            holdings_changed = True
+
         # Fetch benchmark index
         try:
             benchmark_df = fetch_index_history(holding.benchmark_index)
@@ -361,6 +385,11 @@ def main():
             )
             analyses.append(fa)
 
+    # Persist holdings if any pending lots were confirmed
+    if holdings_changed:
+        save_holdings(holdings)
+        print("[Main] Holdings updated with confirmed NAVs")
+
     # ---- 6. Portfolio summary ----
     portfolio = compute_portfolio_summary(analyses)
     print(f"\n[Portfolio] Active: {portfolio.get('active_count', 0)}, "
@@ -369,12 +398,24 @@ def main():
     # ---- 7. Build report ----
     is_friday = cal.is_friday(today)
     week_data = _collect_weekly_data(holdings, analyses, today) if is_friday else None
+
+    # Fetch macro data
+    macro_brief = ""
+    try:
+        macro_snap = fetch_macro_snapshot()
+        macro_brief = build_macro_brief(macro_snap)
+        print(f"[Macro] LPR 1Y={macro_snap.lpr_1y}%, 5Y={macro_snap.lpr_5y}%, "
+              f"M2={macro_snap.m2_yoy}%")
+    except Exception as e:
+        print(f"[Macro] WARNING: Could not fetch macro data: {e}")
+
     report = build_daily_report(
         today, analyses, holdings, portfolio,
         is_friday=is_friday,
         missed_days=missed,
         bot_name="大基吧",
         week_data=week_data,
+        macro_brief=macro_brief,
     )
 
     # ---- 8. Push daily report (single push to avoid rate limiting) ----
