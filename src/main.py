@@ -18,6 +18,8 @@ except Exception:
 # Ensure src/ is importable when running as `python src/main.py`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pandas as pd
+
 from src.config import load_holdings, load_preferences, save_holdings, FundHolding
 from src.trade_cal import TradingCalendar
 from src.fetcher import (
@@ -34,8 +36,16 @@ from src.store import (
     load_run_state,
     save_run_state,
     detect_missed_runs,
+    load_add_signal_state,
+    save_add_signal_state,
+    _default_add_signal_state,
 )
-from src.analyzer import analyze_fund, compute_portfolio_summary
+from src.analyzer import (
+    analyze_fund,
+    compute_portfolio_summary,
+    compute_reversal_signals,
+    update_add_signal_state,
+)
 from src.macro import fetch_macro_snapshot, build_macro_brief
 from src.reporter import build_daily_report, build_extra_alert
 from src.pusher import send_report, send_alert
@@ -251,6 +261,101 @@ def _evaluate_operation(holding, lot, lot_date: date, note: str) -> str:
     return "正常操作"
 
 
+# ---------------------------------------------------------------------------
+# Right-side add-position (右侧加仓)
+# ---------------------------------------------------------------------------
+
+_REVERSAL_SIGNAL_NAMES = {
+    "s_ma5": "站上5日线+拐头",
+    "s_cross": "均线金叉",
+    "s_macd": "MACD金叉",
+}
+
+
+def _process_reversal_signal(
+    holding,
+    nav_df,
+    analysis,
+    add_state: dict,
+    reversal_cfg: dict,
+    today: date,
+) -> list[tuple[str, str]]:
+    """
+    计算右侧加仓信号、推进状态机，返回需要即时推送的 (标题, 内容) 列表。
+    状态写入 add_state[fund_code]；reporter 需要的信息写入 analysis.reversal_info。
+    """
+    nav_series = nav_df.set_index("date")["nav"]
+    if not isinstance(nav_series.index, pd.DatetimeIndex):
+        nav_series.index = pd.to_datetime(nav_series.index)
+    if nav_series.empty:
+        return []
+
+    code = holding.fund_code
+    prev_state = add_state.get(code, _default_add_signal_state(code))
+    sig = compute_reversal_signals(nav_series, reversal_cfg)
+    new_state, events = update_add_signal_state(
+        prev_state, sig, today.isoformat(), float(nav_series.iloc[-1]), reversal_cfg,
+    )
+    add_state[code] = new_state
+
+    # 命中信号的中文名（供日报展示）
+    hit_names = [name for key, name in _REVERSAL_SIGNAL_NAMES.items()
+                 if getattr(sig, key, False)]
+
+    tiers = list(reversal_cfg.get("tiers", [0.20, 0.10, 0.05]))
+    ratio = tiers[new_state["tier"] - 1] if new_state["tier"] >= 1 else 0.0
+    suggest_amount = holding.total_shares * float(nav_series.iloc[-1]) * ratio
+
+    analysis.reversal_info = {
+        "status": new_state["status"],
+        "tier": new_state["tier"],
+        "max_tiers": len(tiers),
+        "signal_since": new_state.get("signal_since", ""),
+        "signals_hit": hit_names,
+        "drawdown_pct": sig.drawdown_pct,
+        "max_dd_pct": sig.max_dd_pct,
+        "recent_low": new_state.get("recent_low", 0.0),
+        "tier_ratio": ratio,
+        "suggest_amount": suggest_amount,
+    }
+
+    sig_high_lookback = reversal_cfg.get("high_lookback", 20)
+    pushes = []
+    for ev in events:
+        if ev["type"] == "tier_triggered":
+            tier = ev["tier"]
+            pct = int(tiers[tier - 1] * 100)
+            signals_str = "、".join(hit_names) if hit_names else "止跌转涨"
+            if tier == 1:
+                title = f"📥 右侧加仓信号：{holding.fund_name}"
+                content = "\n".join([
+                    f"{holding.fund_code} 近{sig_high_lookback}日最深回撤 {sig.max_dd_pct:+.1f}%，"
+                    "出现止跌转涨确认：",
+                    f"✅ {signals_str}",
+                    "",
+                    f"建议加仓现有仓位的 **{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 1 档。",
+                    f"🛡️ 本轮低点 {new_state['recent_low']:.4f}，跌破则信号作废。",
+                ])
+            else:
+                title = f"📥 右侧加仓第 {tier} 档确认：{holding.fund_name}"
+                content = "\n".join([
+                    "继续上行中的再次确认：",
+                    f"✅ {signals_str}",
+                    "",
+                    f"建议追加现有仓位的 **{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 {tier} 档。",
+                    f"🛡️ 本轮低点 {new_state['recent_low']:.4f} 仍有效，跌破则信号作废。",
+                ])
+            pushes.append((title, content))
+        elif ev["type"] == "invalidated":
+            title = f"⚠️ 右侧加仓信号作废：{holding.fund_name}"
+            content = "\n".join([
+                f"{holding.fund_code} 跌破本轮低点 {prev_state.get('recent_low', 0):.4f}，",
+                "原定加仓计划取消，等下一次止跌确认后再考虑。切勿盲目抄底。",
+            ])
+            pushes.append((title, content))
+    return pushes
+
+
 def main():
     data_dir = _get_data_dir()
     today = date.today()
@@ -276,6 +381,7 @@ def main():
     holdings = load_holdings()
     prefs = load_preferences()
     run_state = load_run_state(data_dir)
+    add_state = load_add_signal_state(data_dir)  # 右侧加仓信号状态
 
     # Override tokens from env vars if available (GitHub Secrets)
     user_token = os.environ.get("PUSHPLUS_USER_TOKEN", prefs.pushplus_user_token)
@@ -295,8 +401,11 @@ def main():
     # ---- 5. Fetch & analyze each fund ----
     analyses = []
     alerts_to_send = []
+    reversal_pushes = []  # 右侧加仓即时推送 (title, content)
     holdings_changed = False
     is_first_run = (run_state.get("total_runs", 0) == 0)
+    reversal_cfg = prefs.reversal_add or {}
+    reversal_profiles = reversal_cfg.get("profiles", ["sector"])
 
     for fund_code, holding in holdings.items():
         print(f"\n--- [{fund_code}] {holding.fund_name} ---")
@@ -370,6 +479,15 @@ def main():
             if abs(analysis.daily_change_pct) >= abs(prefs.extra_alert_change_threshold):
                 alert_type = "drop" if analysis.daily_change_pct < 0 else "surge"
                 alerts_to_send.append((analysis, alert_type))
+
+            # Right-side add-position signal（行业基金止跌转涨确认）
+            if (reversal_cfg.get("enabled", True)
+                    and holding.volatility_profile in reversal_profiles):
+                reversal_pushes.extend(
+                    _process_reversal_signal(
+                        holding, merged_nav, analysis, add_state, reversal_cfg, today,
+                    )
+                )
         except Exception as e:
             print(f"  ERROR in analysis: {e}")
             import traceback
@@ -432,6 +550,12 @@ def main():
         print("Report pushed successfully!")
         run_state["failed_runs"] = 0
 
+    # ---- 9. Right-side add-position immediate pushes (tier trigger / invalidate) ----
+    for push_title, push_content in reversal_pushes:
+        print(f"[Reversal] Push: {push_title}")
+        send_alert(user_token, push_title, push_content)
+        time.sleep(2)  # Respect rate limit between pushes
+
     # ---- 10. Update run state ----
     run_state["last_run_date"] = today.isoformat()
     if ok:
@@ -441,6 +565,7 @@ def main():
         run_state["first_run_date"] = today.isoformat()
 
     save_run_state(run_state, data_dir)
+    save_add_signal_state(add_state, data_dir)
 
     print(f"\n{'='*50}")
     print(f"Run complete. Funds: {len(analyses)}, Alerts: {len(alerts_to_send)}, "

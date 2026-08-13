@@ -79,6 +79,167 @@ class FundAnalysis:
     # Data quality
     data_quality: str = "ok"        # "ok" | "insufficient" | "stale"
 
+    # ── 右侧加仓（止跌转涨确认）──
+    reversal_info: dict = field(default_factory=dict)  # 由 main.py 填充，reporter 读取
+
+
+# ---------------------------------------------------------------------------
+# Right-side add-position signals (止跌转涨确认)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ReversalSignals:
+    """Raw reversal signals for one fund on one trading day (all pure)."""
+    # 组合信号
+    s_ma5: bool = False     # 站上5日线 + 5日线拐头向上
+    s_cross: bool = False   # MA5 上穿 MA10 或 MA20
+    s_macd: bool = False    # MACD DIF 上穿 DEA（金叉）
+    hit_count: int = 0      # 同时成立的信号个数
+    # 前置条件
+    drawdown_pct: float = 0.0     # 当日距高点回撤（负值，%）
+    max_dd_pct: float = 0.0       # 近 high_lookback 日内最大回撤深度（负值，%）
+    high_ref: float = 0.0         # 回撤高点的回溯参考价
+    low_ref: float = 0.0          # 本轮低点（不含当日，跌破即信号作废）
+    triggered: bool = False       # 组合确认成立 + 回撤达标
+
+
+def compute_reversal_signals(nav_series: pd.Series, cfg: dict) -> ReversalSignals:
+    """
+    右侧加仓的止跌转涨组合信号。
+
+    cfg keys (见 config.UserPreferences.reversal_add):
+      ma_hold_days, min_signals, high_lookback, max_drawdown_pct, low_lookback
+
+    三个候选信号：
+      S1 站上5日线+拐头：连续 ma_hold_days 天收盘站上 MA5，且 MA5 今日上行
+      S2 均线金叉：MA5 上穿 MA10 或 MA20
+      S3 MACD金叉：DIF(EMA12-EMA26) 上穿 DEA(EMA9)
+    前置条件：近 high_lookback 日内出现过最深回撤 max_dd_pct 达到
+      max_drawdown_pct 阈值（"刚从深跌中走出"，而非信号当日仍深跌 ——
+      反弹中段的当日回撤会快速收窄，若按当日口径会错过绝大多数信号）。
+    组合确认：hit_count >= min_signals 且深度回撤达标才算 triggered。
+    """
+    sig = ReversalSignals()
+    n = len(nav_series)
+    if n < 35:  # MACD 需要 26+9 根预热，数据不足时整个信号不可用
+        return sig
+
+    close = nav_series
+    ma5 = close.rolling(5).mean()
+    ma10 = close.rolling(10).mean()
+    ma20 = close.rolling(20).mean()
+
+    # ---- S1: 连续N日站上5日线 且 MA5 拐头向上 ----
+    hold_days = int(cfg.get("ma_hold_days", 2))
+    if n >= 5 + hold_days:
+        above = close > ma5
+        sig.s_ma5 = bool(
+            above.iloc[-1]
+            and all(above.iloc[-i] for i in range(1, hold_days + 1))
+            and ma5.iloc[-1] > ma5.iloc[-2]
+        )
+
+    # ---- S2: MA5 上穿 MA10 或 MA20 ----
+    if n >= 21:
+        cross10 = ma5.iloc[-2] <= ma10.iloc[-2] and ma5.iloc[-1] > ma10.iloc[-1]
+        cross20 = ma5.iloc[-2] <= ma20.iloc[-2] and ma5.iloc[-1] > ma20.iloc[-1]
+        sig.s_cross = bool(cross10 or cross20)
+
+    # ---- S3: MACD 金叉 ----
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    dif = ema12 - ema26
+    dea = dif.ewm(span=9, adjust=False).mean()
+    sig.s_macd = bool(dif.iloc[-2] <= dea.iloc[-2] and dif.iloc[-1] > dea.iloc[-1])
+
+    # ---- 前置条件：回撤幅度 ----
+    # 当日回撤：信号日距 high_lookback 日内高点的回撤（展示用）
+    lookback = int(cfg.get("high_lookback", 20))
+    high_ref = float(close.tail(lookback).max())
+    sig.high_ref = high_ref
+    sig.drawdown_pct = (close.iloc[-1] / high_ref - 1) * 100 if high_ref > 0 else 0.0
+
+    # 深度回撤：近 high_lookback 日内出现过的最深回撤（相对同日高点）。
+    # 反弹几天后"当日回撤"会快速收窄，但"刚从深跌中走出"这一事实
+    # 在窗口内仍然成立 —— 前置条件用深度而不是当日回撤，才与
+    # "右侧确认加仓"的意图一致。
+    if n >= lookback:
+        window = close.iloc[-lookback:]
+        max_dd = 0.0
+        for k in range(1, len(window)):
+            ref = float(window.iloc[:k + 1].max())
+            dd = (float(window.iloc[k]) / ref - 1) * 100
+            max_dd = min(max_dd, dd)
+        sig.max_dd_pct = max_dd
+    else:
+        sig.max_dd_pct = sig.drawdown_pct
+
+    # ---- 本轮低点（不含当日，避免"今天破今天"） ----
+    low_lookback = int(cfg.get("low_lookback", 20))
+    window = close.iloc[-(low_lookback + 1):-1]
+    sig.low_ref = float(window.min()) if len(window) >= 1 else float(close.min())
+
+    # ---- 组合确认 ----
+    sig.hit_count = sum([sig.s_ma5, sig.s_cross, sig.s_macd])
+    min_signals = int(cfg.get("min_signals", 2))
+    sig.triggered = (
+        sig.hit_count >= min_signals
+        and sig.max_dd_pct <= cfg.get("max_drawdown_pct", -10.0)
+    )
+    return sig
+
+
+def update_add_signal_state(
+    state: dict,
+    sig: ReversalSignals,
+    today: str,
+    current_nav: float,
+    cfg: dict,
+) -> tuple[dict, list]:
+    """
+    右侧加仓状态机（纯函数）。
+
+    state: {status: idle|active, tier, signal_since, reference_nav, recent_low}
+    事件（返回给调用方决定推送）：
+      {"type": "tier_triggered", "tier": N}
+      {"type": "invalidated"}
+    规则：
+      - idle + 组合确认 → active，tier=1
+      - active + 组合确认 且 收盘高于上一档触发价 → tier+1（右侧递减，越涨加越少）
+      - active + 收盘跌破 recent_low → 作废回 idle
+      - 作废优先于新触发（同一天破位不算信号）
+    """
+    events = []
+    tiers = list(cfg.get("tiers", [0.20, 0.10, 0.05]))
+    state = dict(state)
+
+    if state.get("status") == "active":
+        # 破前低 → 作废（优先级最高）
+        if current_nav <= state.get("recent_low", 0):
+            state = {"status": "idle", "tier": 0, "signal_since": "",
+                     "reference_nav": 0.0, "recent_low": 0.0}
+            events.append({"type": "invalidated"})
+        # 组合确认 → 档位推进（右侧上涨途中再确认）
+        elif sig.triggered and state.get("tier", 0) < len(tiers) \
+                and current_nav > state.get("reference_nav", 0):
+            new_tier = state["tier"] + 1
+            state["tier"] = new_tier
+            state["reference_nav"] = current_nav
+            events.append({"type": "tier_triggered", "tier": new_tier})
+    else:
+        # idle：组合确认 + 回撤达标 → 激活第 1 档
+        if sig.triggered:
+            state = {
+                "status": "active",
+                "tier": 1,
+                "signal_since": today,
+                "reference_nav": current_nav,
+                "recent_low": sig.low_ref,
+            }
+            events.append({"type": "tier_triggered", "tier": 1})
+
+    return state, events
+
 
 # ---------------------------------------------------------------------------
 # Moving averages

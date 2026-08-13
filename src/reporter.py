@@ -278,6 +278,31 @@ def _build_fund_detail(a, holding) -> str:
         lines.append("💡 **闲钱提示**：当前处于相对低位且趋势向好，如有闲钱可考虑小额加仓。")
         lines.append("")
 
+    # ── 右侧加仓机会（止跌转涨确认）──
+    rv = a.reversal_info or {}
+    if rv.get("status") == "active":
+        tier = rv.get("tier", 0)
+        max_tiers = rv.get("max_tiers", 3)
+        signals_str = "、".join(rv.get("signals_hit", [])) or "止跌转涨"
+        ratio_pct = int((rv.get("tier_ratio") or 0) * 100)
+        amount = rv.get("suggest_amount") or 0
+        low = rv.get("recent_low") or 0
+        lines.extend([
+            "### 📥 右侧加仓机会",
+            "",
+            f"- 🕒 信号确认日：{rv.get('signal_since', '—')}（第 {tier}/{max_tiers} 档）",
+            f"- 📉 近20日最深回撤：**{rv.get('max_dd_pct', 0):+.1f}%**"
+            f"（当前回撤 {rv.get('drawdown_pct', 0):+.1f}%）",
+            f"- ✅ 止跌确认信号：{signals_str}",
+            f"- 💰 建议加仓：现有仓位的 **{ratio_pct}%**"
+            f"（≈ ¥{amount:,.0f}）",
+            f"- 🛡️ 本轮低点：**{low:.4f}**（跌破即信号作废）",
+            "",
+        ])
+        if tier >= max_tiers:
+            lines.append("🗓️ 已达最大档位，后续以持有观察为主。")
+            lines.append("")
+
     lines.extend(["---", ""])
     return "\n".join(lines)
 

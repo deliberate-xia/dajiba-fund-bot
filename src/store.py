@@ -119,6 +119,37 @@ def save_run_state(state: dict, data_dir: Path) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Right-side add-position signal state
+# ---------------------------------------------------------------------------
+
+def _default_add_signal_state(code: str) -> dict:
+    return {
+        "fund_code": code,
+        "status": "idle",          # "idle" | "active"
+        "tier": 0,                 # 当前加仓档位 0-3
+        "signal_since": "",        # 信号激活日期
+        "reference_nav": 0.0,      # 上一档触发日收盘净值
+        "recent_low": 0.0,         # 本轮低点（跌破即作废）
+    }
+
+
+def load_add_signal_state(data_dir: Path) -> dict:
+    """Load add_signal_state.json (persisted in repo so GitHub Actions
+    state survives across runs)."""
+    file_path = data_dir / "add_signal_state.json"
+    if not file_path.exists():
+        return {}
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_add_signal_state(state: dict, data_dir: Path) -> None:
+    """Save add_signal_state.json."""
+    with open(data_dir / "add_signal_state.json", "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
 def _default_run_state() -> dict:
     return {
         "last_run_date": None,

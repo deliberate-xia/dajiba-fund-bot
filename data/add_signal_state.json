@@ -1,0 +1,26 @@
+{
+  "018927": {
+    "fund_code": "018927",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
+  },
+  "161725": {
+    "fund_code": "161725",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
+  },
+  "017140": {
+    "fund_code": "017140",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
+  }
+}

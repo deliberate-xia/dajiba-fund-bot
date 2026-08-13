@@ -14,5 +14,15 @@
     { "min_trend_score": 75, "sell_ratio": 0.30 },
     { "min_trend_score": 65, "sell_ratio": 0.50 },
     { "min_trend_score": 0, "sell_ratio": 0.70 }
-  ]
+  ],
+  "reversal_add": {
+    "enabled": true,
+    "profiles": ["sector"],
+    "high_lookback": 20,
+    "max_drawdown_pct": -10.0,
+    "min_signals": 2,
+    "ma_hold_days": 2,
+    "tiers": [0.20, 0.10, 0.05],
+    "low_lookback": 20
+  }
 }

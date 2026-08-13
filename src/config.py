@@ -118,6 +118,25 @@ class UserPreferences:
         {"min_trend_score": 0,  "sell_ratio": 0.70},
     ])
 
+    # ── 右侧加仓（止跌转涨确认后提示加仓）──
+    # 仅对配置的 volatility_profile（默认行业基金 sector）生效：
+    #   1. 前置条件：近 high_lookback 日内出现过 ≥ max_drawdown_pct 的
+    #      深跌（从近期低点计算的最大回撤），即"刚从深跌中走出"
+    #   2. 止跌信号组合确认：站上5日线+拐头 / 均线金叉 / MACD金叉，
+    #      至少 min_signals 个同时成立才触发
+    #   3. 右侧递减式加仓：tiers 定义各档位比例（相对当前仓位）
+    #   4. 跌破本轮低点（触发日往前 low_lookback 日最低收盘）→ 信号作废
+    reversal_add: dict = field(default_factory=lambda: {
+        "enabled": True,
+        "profiles": ["sector"],
+        "high_lookback": 20,       # 回撤高点的回溯天数
+        "max_drawdown_pct": -10.0, # 回撤阈值（%）
+        "min_signals": 2,          # 组合确认最少信号数
+        "ma_hold_days": 2,         # 站上5日线的连续天数
+        "tiers": [0.20, 0.10, 0.05],
+        "low_lookback": 20,        # 本轮低点的回溯天数（不含当日）
+    })
+
 
 # ---------------------------------------------------------------------------
 # I/O helpers
@@ -199,4 +218,5 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         timezone=raw.get("timezone", "Asia/Shanghai"),
         trailing_stop_post_profit_multipliers=raw.get("trailing_stop_post_profit_multipliers", {}),
         take_profit_sell_ratios=raw.get("take_profit_sell_ratios", []),
+        reversal_add=raw.get("reversal_add", {}),
     )
