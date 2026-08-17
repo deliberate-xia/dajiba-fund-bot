@@ -87,10 +87,10 @@
       },
       {
         "date": "2026-08-17",
-        "amount_cny": null,
-        "nav_at_purchase": null,
+        "amount_cny": -610.03,
+        "nav_at_purchase": 0.5589,
         "shares": -1091.48,
-        "nav_confirmed": false,
+        "nav_confirmed": true,
         "note": "8/17 15:00前全部转换转出→安信稳健001338，待净值确认"
       }
     ],
@@ -149,9 +149,9 @@
       },
       {
         "date": "2026-08-10",
-        "amount_cny": 112.90,
+        "amount_cny": 112.9,
         "nav_at_purchase": 1.778,
-        "shares": 63.50,
+        "shares": 63.5,
         "nav_confirmed": true,
         "note": "有色金属转换转入63.50份，周一净值成交"
       },
@@ -159,7 +159,7 @@
         "date": "2026-08-10",
         "amount_cny": 344.57,
         "nav_at_purchase": 1.778,
-        "shares": 193.80,
+        "shares": 193.8,
         "nav_confirmed": true,
         "note": "沪深300赎回转入193.80份，周一净值成交"
       }
