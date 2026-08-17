@@ -135,6 +135,7 @@ class UserPreferences:
         "ma_hold_days": 2,         # 站上5日线的连续天数
         "tiers": [0.20, 0.10, 0.05],
         "low_lookback": 20,        # 本轮低点的回溯天数（不含当日）
+        "reentry_base_amount": 200.0,  # 清仓后重新入场的基准建仓金额（份额为0时使用）
     })
 
 

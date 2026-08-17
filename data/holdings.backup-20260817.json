@@ -84,14 +84,6 @@
         "shares": 172.81,
         "nav_confirmed": true,
         "note": "8月11日加仓¥99.9"
-      },
-      {
-        "date": "2026-08-17",
-        "amount_cny": null,
-        "nav_at_purchase": null,
-        "shares": -1091.48,
-        "nav_confirmed": false,
-        "note": "8/17 15:00前全部转换转出→安信稳健001338，待净值确认"
       }
     ],
     "skip_tracking": false

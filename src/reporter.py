@@ -287,6 +287,7 @@ def _build_fund_detail(a, holding) -> str:
         ratio_pct = int((rv.get("tier_ratio") or 0) * 100)
         amount = rv.get("suggest_amount") or 0
         low = rv.get("recent_low") or 0
+        reentry = rv.get("is_reentry", False)
         lines.extend([
             "### 📥 右侧加仓机会",
             "",
@@ -294,7 +295,7 @@ def _build_fund_detail(a, holding) -> str:
             f"- 📉 近20日最深回撤：**{rv.get('max_dd_pct', 0):+.1f}%**"
             f"（当前回撤 {rv.get('drawdown_pct', 0):+.1f}%）",
             f"- ✅ 止跌确认信号：{signals_str}",
-            f"- 💰 建议加仓：现有仓位的 **{ratio_pct}%**"
+            f"- 💰 建议{'重新建仓' if reentry else '加仓现有仓位的'} **{ratio_pct}%**"
             f"（≈ ¥{amount:,.0f}）",
             f"- 🛡️ 本轮低点：**{low:.4f}**（跌破即信号作废）",
             "",

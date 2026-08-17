@@ -304,7 +304,16 @@ def _process_reversal_signal(
 
     tiers = list(reversal_cfg.get("tiers", [0.20, 0.10, 0.05]))
     ratio = tiers[new_state["tier"] - 1] if new_state["tier"] >= 1 else 0.0
-    suggest_amount = holding.total_shares * float(nav_series.iloc[-1]) * ratio
+    current_value = holding.total_shares * float(nav_series.iloc[-1])
+    # 清仓后重新入场（份额=0）：没有"现有仓位"可加，
+    # 建议金额改用基准建仓金额（reentry_base_amount），按档位比例递减。
+    if holding.total_shares > 0:
+        suggest_amount = current_value * ratio
+        is_reentry = False
+    else:
+        base = float(reversal_cfg.get("reentry_base_amount", 200.0))
+        suggest_amount = base * ratio
+        is_reentry = True
 
     analysis.reversal_info = {
         "status": new_state["status"],
@@ -317,6 +326,7 @@ def _process_reversal_signal(
         "recent_low": new_state.get("recent_low", 0.0),
         "tier_ratio": ratio,
         "suggest_amount": suggest_amount,
+        "is_reentry": is_reentry,
     }
 
     sig_high_lookback = reversal_cfg.get("high_lookback", 20)
@@ -333,7 +343,8 @@ def _process_reversal_signal(
                     "出现止跌转涨确认：",
                     f"✅ {signals_str}",
                     "",
-                    f"建议加仓现有仓位的 **{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 1 档。",
+                    f"建议{'重新建仓' if is_reentry else '加仓现有仓位的'} "
+                    f"**{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 1 档。",
                     f"🛡️ 本轮低点 {new_state['recent_low']:.4f}，跌破则信号作废。",
                 ])
             else:
@@ -342,7 +353,8 @@ def _process_reversal_signal(
                     "继续上行中的再次确认：",
                     f"✅ {signals_str}",
                     "",
-                    f"建议追加现有仓位的 **{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 {tier} 档。",
+                    f"建议{'再追加' if not is_reentry else '再加'} "
+                    f"**{pct}%**（≈ ¥{suggest_amount:,.0f}），右侧递减第 {tier} 档。",
                     f"🛡️ 本轮低点 {new_state['recent_low']:.4f} 仍有效，跌破则信号作废。",
                 ])
             pushes.append((title, content))

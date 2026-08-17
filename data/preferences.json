@@ -23,6 +23,7 @@
     "min_signals": 2,
     "ma_hold_days": 2,
     "tiers": [0.20, 0.10, 0.05],
-    "low_lookback": 20
+    "low_lookback": 20,
+    "reentry_base_amount": 200.0
   }
 }
