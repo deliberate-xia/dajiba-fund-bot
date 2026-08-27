@@ -22,6 +22,14 @@
         "shares": -158.85,
         "nav_confirmed": true,
         "note": "8/7 15:00后赎回1/2→余额宝→全部转入安信稳健，周一净值成交"
+      },
+      {
+        "date": "2026-08-27",
+        "amount_cny": null,
+        "nav_at_purchase": null,
+        "shares": -158.85,
+        "nav_confirmed": false,
+        "note": "8/27 15:00前全部转换转出→安信稳健001338，待净值确认"
       }
     ],
     "skip_tracking": false
