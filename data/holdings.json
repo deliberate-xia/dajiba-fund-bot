@@ -25,14 +25,15 @@
       },
       {
         "date": "2026-08-27",
-        "amount_cny": null,
-        "nav_at_purchase": null,
+        "amount_cny": -342.61,
+        "nav_at_purchase": 2.1568,
         "shares": -158.85,
-        "nav_confirmed": false,
+        "nav_confirmed": true,
         "note": "8/27 15:00前全部转换转出→安信稳健001338，待净值确认"
       }
     ],
-    "skip_tracking": false
+    "skip_tracking": false,
+    "no_exit": false
   },
   "018927": {
     "fund_code": "018927",
@@ -59,7 +60,8 @@
         "note": "沪深300赎回1/3转入，待确认净值"
       }
     ],
-    "skip_tracking": false
+    "skip_tracking": false,
+    "no_exit": false
   },
   "161725": {
     "fund_code": "161725",
@@ -94,7 +96,8 @@
         "note": "8/17 15:00前全部转换转出→安信稳健001338，App明细:转出510.55、手续费2.54、退回4.52、实入503.49"
       }
     ],
-    "skip_tracking": false
+    "skip_tracking": false,
+    "no_exit": false
   },
   "017140": {
     "fund_code": "017140",
@@ -121,7 +124,8 @@
         "note": "8/7 15:00后转换转出65.90份→安信稳健，周一净值成交"
       }
     ],
-    "skip_tracking": false
+    "skip_tracking": false,
+    "no_exit": false
   },
   "040046": {
     "fund_code": "040046",
@@ -194,6 +198,7 @@
         "note": "8/17 白酒(161725)全部转换转入283.54份，App确认净值1.7757"
       }
     ],
-    "skip_tracking": false
+    "skip_tracking": false,
+    "no_exit": false
   }
 }
