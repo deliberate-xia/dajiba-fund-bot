@@ -27,5 +27,16 @@
     "tiers": [0.20, 0.10, 0.05],
     "low_lookback": 20,
     "reentry_base_amount": 200.0
+  },
+  "dip_buy": {
+    "enabled": true,
+    "codes": [],
+    "lookback_days": 60,
+    "tiers": [
+      { "dd_pct": -5,  "amount": 500 },
+      { "dd_pct": -10, "amount": 1000 },
+      { "dd_pct": -15, "amount": 1500 },
+      { "dd_pct": -20, "amount": 2000 }
+    ]
   }
 }

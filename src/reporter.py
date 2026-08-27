@@ -225,9 +225,11 @@ def _build_fund_detail(a, holding, quiet: bool = False) -> str:
 
     lines.extend(["", "### 📈 阶段表现", ""])
 
-    bm_name = holding.benchmark_name if holding else "基准"
-    lines.append(f"| 周期 | 基金 | {bm_name} | 超额 |")
-    lines.append("|------|------|---------|------|")
+    has_benchmark = bool(holding and holding.benchmark_index)
+    if has_benchmark:
+        bm_name = holding.benchmark_name if holding else "基准"
+        lines.append(f"| 周期 | 基金 | {bm_name} | 超额 |")
+        lines.append("|------|------|---------|------|")
 
     for period, f_ret, b_ret in [
         ("近7日", a.return_7d, a.benchmark_return_7d),
@@ -236,53 +238,70 @@ def _build_fund_detail(a, holding, quiet: bool = False) -> str:
     ]:
         if abs(f_ret) < 0.001 and abs(b_ret) < 0.001:
             continue
-        delta = f_ret - b_ret
-        icon_s = "✅" if delta >= 0 else "❌"
-        lines.append(f"| {period} | {fmt_pct(f_ret)} | {fmt_pct(b_ret)} | {icon_s} {fmt_pct(delta)} |")
+        if has_benchmark:
+            delta = f_ret - b_ret
+            icon_s = "✅" if delta >= 0 else "❌"
+            lines.append(f"| {period} | {fmt_pct(f_ret)} | {fmt_pct(b_ret)} | {icon_s} {fmt_pct(delta)} |")
+        else:
+            lines.append(f"| {period} | {fmt_pct(f_ret)} |")
 
-    lines.extend([
-        "",
-        "### ⚙️ 风控状态",
-        "",
-        f"- 🛡️ 止损线：**{a.effective_stop:.4f}**（距当前 {fmt_pct(a.stop_distance_pct)}）",
-    ])
-    # Take-profit line: "还需上涨 X%" only makes sense while BELOW the line.
-    if a.profit_distance_pct < 0:
-        to_go = (a.take_profit_price / a.current_nav - 1) * 100 if a.current_nav > 0 else 0
-        lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（还需上涨 {fmt_pct(to_go)}）")
+    if not has_benchmark:
+        lines.append("（海外 QDII 无本地基准，仅展示自身表现）")
+
+    # ── 风控状态 ──
+    if holding and holding.no_exit:
+        # 长期持有策略：风控由「跌多买多」档位驱动，无止损/止盈线
+        risk_lines = [
+            "### ⚙️ 风控状态",
+            "",
+            "- 🛡️ 长期持有策略：**不设止损/止盈卖出**，专注下方「跌多买多」档位加仓。",
+            "",
+        ]
     else:
-        lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（已突破，当前高出 {fmt_pct(a.profit_distance_pct)}）")
+        risk_lines = [
+            "### ⚙️ 风控状态",
+            "",
+            f"- 🛡️ 止损线：**{a.effective_stop:.4f}**（距当前 {fmt_pct(a.stop_distance_pct)}）",
+        ]
+        # Take-profit line: "还需上涨 X%" only makes sense while BELOW the line.
+        if a.profit_distance_pct < 0:
+            to_go = (a.take_profit_price / a.current_nav - 1) * 100 if a.current_nav > 0 else 0
+            risk_lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（还需上涨 {fmt_pct(to_go)}）")
+        else:
+            risk_lines.append(f"- 🎯 止盈线：**{a.take_profit_price:.4f}**（已突破，当前高出 {fmt_pct(a.profit_distance_pct)}）")
 
-    # ── 分批止盈信息 ──
-    if a.profit_tier >= 1:
-        sell_pct = int(a.sell_ratio * 100)
-        keep_pct = 100 - sell_pct
-        ts = a.trailing_stop_post_profit
-        if ts > 0:
-            ts_dist = (a.current_nav / ts - 1) * 100
-            lines.append(f"- 📤 触发后建议卖出 **{sell_pct}%**（{a.profit_strategy_reason}）")
-            lines.append(f"- 📥 剩余 **{keep_pct}%** 移动止盈线：**{ts:.4f}**（距当前 {ts_dist:+.1f}%）")
+        # ── 分批止盈信息 ──
+        if a.profit_tier >= 1:
+            sell_pct = int(a.sell_ratio * 100)
+            keep_pct = 100 - sell_pct
+            ts = a.trailing_stop_post_profit
+            if ts > 0:
+                ts_dist = (a.current_nav / ts - 1) * 100
+                risk_lines.append(f"- 📤 触发后建议卖出 **{sell_pct}%**（{a.profit_strategy_reason}）")
+                risk_lines.append(f"- 📥 剩余 **{keep_pct}%** 移动止盈线：**{ts:.4f}**（距当前 {ts_dist:+.1f}%）")
+            if a.profit_tier == 2:
+                risk_lines.append("- 🔔 **止盈已触发**，请按上述比例执行")
+            else:
+                risk_lines.append("- ⏳ 接近止盈目标，可提前准备操作计划")
+
         if a.profit_tier == 2:
-            lines.append("- 🔔 **止盈已触发**，请按上述比例执行")
+            # Profit already triggered: the operative exit is the trailing stop,
+            # not the "stop-loss" line — don't scare the user about it.
+            risk_lines.append("- 🛡️ 止盈已触发，剩余仓位由移动止盈线保护，无需理会止损距离")
+        elif a.profit_tier == 1:
+            # Nearing take-profit: frame the message around the profit target.
+            if a.stop_distance_pct > 5:
+                risk_lines.append("- ⏳ 距止盈目标一步之遥，止损距离安全")
+            else:
+                risk_lines.append("- ⏳ 接近止盈目标；止损线也较近，注意触发前的回撤风险")
+        elif a.stop_distance_pct > 10:
+            risk_lines.append("- ✅ 安全区间运行，未触发风控")
+        elif a.stop_distance_pct > a.near_stop_band_pct:
+            risk_lines.append("- ⚠️ 正常区间，但建议关注止损距离")
         else:
-            lines.append("- ⏳ 接近止盈目标，可提前准备操作计划")
-
-    if a.profit_tier == 2:
-        # Profit already triggered: the operative exit is the trailing stop,
-        # not the "stop-loss" line — don't scare the user about it.
-        lines.append("- 🛡️ 止盈已触发，剩余仓位由移动止盈线保护，无需理会止损距离")
-    elif a.profit_tier == 1:
-        # Nearing take-profit: frame the message around the profit target.
-        if a.stop_distance_pct > 5:
-            lines.append("- ⏳ 距止盈目标一步之遥，止损距离安全")
-        else:
-            lines.append("- ⏳ 接近止盈目标；止损线也较近，注意触发前的回撤风险")
-    elif a.stop_distance_pct > 10:
-        lines.append("- ✅ 安全区间运行，未触发风控")
-    elif a.stop_distance_pct > a.near_stop_band_pct:
-        lines.append("- ⚠️ 正常区间，但建议关注止损距离")
-    else:
-        lines.append("- 🔴 接近止损线，请密切关注！")
+            risk_lines.append("- 🔴 接近止损线，请密切关注！")
+        risk_lines.append("")
+    lines.extend(risk_lines)
 
     lines.extend([
         "",
@@ -302,6 +321,32 @@ def _build_fund_detail(a, holding, quiet: bool = False) -> str:
     if a.signal_type == "add" and a.trend_light == "green":
         lines.append("💡 **闲钱提示**：当前处于相对低位且趋势向好，如有闲钱可考虑小额加仓。")
         lines.append("")
+
+    # ── 跌多买多计划（左侧下跌加仓档位）──
+    db = a.dip_buy_info or {}
+    if db:
+        dd = db.get("drawdown_pct", 0)
+        nxt = db.get("next_tier")
+        fired = int(db.get("fired_count", 0))
+        total = int(db.get("tier_count", 0))
+        lines.extend(["### 📉 跌多买多计划", ""])
+        lines.append(
+            f"- 📊 当前回撤：**{dd:+.1f}%**（距60日高点 "
+            f"{db.get('high_ref', 0):.4f}）"
+        )
+        if nxt:
+            lines.append(
+                f"- 🎯 下一档：回撤达 **{abs(nxt['dd_pct']):.0f}%** 时买入 "
+                f"**¥{nxt['amount']:,}**"
+            )
+        else:
+            lines.append("- 🎯 全部档位已触发，等待反弹后再开启下一轮")
+        if total:
+            lines.append(f"- 📌 已触发 {fired}/{total} 档（每轮回撤各档位只提醒一次，创新高后重置）")
+        lines.append("")
+        if db.get("just_triggered"):
+            lines.append("🔔 今日有档位触发，已即时推送买入提醒。")
+            lines.append("")
 
     # ── 右侧加仓机会（止跌转涨确认）──
     rv = a.reversal_info or {}

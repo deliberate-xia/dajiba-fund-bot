@@ -174,6 +174,29 @@ def save_signal_state(state: dict, data_dir: Path) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Dip-buy state (跌多买多：每轮回撤各档位只触发一次)
+# ---------------------------------------------------------------------------
+
+def load_dip_buy_state(data_dir: Path) -> dict:
+    """Load dip_buy_state.json (persisted in repo so GitHub Actions state
+    survives across runs).
+
+    Format: {fund_code: {"max_tier": int, "last_trigger_date": str}}
+    """
+    file_path = data_dir / "dip_buy_state.json"
+    if not file_path.exists():
+        return {}
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_dip_buy_state(state: dict, data_dir: Path) -> None:
+    """Save dip_buy_state.json."""
+    with open(data_dir / "dip_buy_state.json", "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
 def _default_run_state() -> dict:
     return {
         "last_run_date": None,

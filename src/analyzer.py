@@ -84,6 +84,9 @@ class FundAnalysis:
     # ── 右侧加仓（止跌转涨确认）──
     reversal_info: dict = field(default_factory=dict)  # 由 main.py 填充，reporter 读取
 
+    # ── 跌多买多（左侧下跌加仓计划）──
+    dip_buy_info: dict = field(default_factory=dict)   # 由 main.py 填充，reporter 读取
+
 
 # ---------------------------------------------------------------------------
 # Right-side add-position signals (止跌转涨确认)
@@ -241,6 +244,32 @@ def update_add_signal_state(
             events.append({"type": "tier_triggered", "tier": 1})
 
     return state, events
+
+
+# ---------------------------------------------------------------------------
+# Dip-buy plan (跌多买多：左侧下跌加仓档位)
+# ---------------------------------------------------------------------------
+
+def compute_dip_buy_status(nav_series: pd.Series, cfg: dict) -> dict:
+    """
+    计算净值距 lookback_days 日内高点的回撤，以及已跨越的买入档位。
+
+    cfg keys (见 config.UserPreferences.dip_buy):
+      lookback_days, tiers: [{"dd_pct": -5, "amount": 500}, ...]
+
+    Returns: {drawdown_pct, high_ref, crossed_tiers}
+      crossed_tiers = 回撤已达到（跌破）阈值的档位列表，按档位深度排序。
+    """
+    lookback = int(cfg.get("lookback_days", 60))
+    n = len(nav_series)
+    if n < 20:
+        return {"drawdown_pct": 0.0, "high_ref": 0.0, "crossed_tiers": []}
+    window = nav_series.tail(lookback)
+    high_ref = float(window.max())
+    dd = (float(nav_series.iloc[-1]) / high_ref - 1) * 100 if high_ref > 0 else 0.0
+    tiers = cfg.get("tiers", [])
+    crossed = [t for t in tiers if dd <= t.get("dd_pct", 0)]
+    return {"drawdown_pct": dd, "high_ref": high_ref, "crossed_tiers": crossed}
 
 
 # ---------------------------------------------------------------------------
@@ -652,9 +681,13 @@ def generate_signal(
         }
 
     if stop_info.get("near_stop"):
+        band = getattr(analysis, "near_stop_band_pct", 1.0)
         return {
             "signal_type": "reduce",
-            "signal_message": "⚠️ 净值已接近止损位（距止损仅2%以内）。如继续下跌建议减仓控制风险，保护本金是第一位的。",
+            "signal_message": (
+                f"⚠️ 净值已接近止损位（距止损仅{band:.0f}%以内）。"
+                "如继续下跌建议减仓控制风险，保护本金是第一位的。"
+            ),
             "signal_urgency": "warning",
         }
 
@@ -844,19 +877,21 @@ def analyze_fund(
     analysis.relative_strength_20d = analysis.return_30d - analysis.benchmark_return_30d
 
     # ---- Beats benchmark text ----
+    # 无基准（海外 QDII 等）时不生成虚假的"跑输 +0.00%"对比
     parts = []
-    for period, fund_ret, bm_ret in [
-        ("近7日", analysis.return_7d, analysis.benchmark_return_7d),
-        ("近30日", analysis.return_30d, analysis.benchmark_return_30d),
-        ("近90日", analysis.return_90d, analysis.benchmark_return_90d),
-    ]:
-        if abs(fund_ret) < 0.001 and abs(bm_ret) < 0.001:
-            continue
-        delta = fund_ret - bm_ret
-        if delta > 0:
-            parts.append(f"✅ {period}跑赢 +{delta:.2f}%")
-        else:
-            parts.append(f"❌ {period}跑输 {delta:.2f}%")
+    if bm_close is not None and len(bm_close) >= 7:
+        for period, fund_ret, bm_ret in [
+            ("近7日", analysis.return_7d, analysis.benchmark_return_7d),
+            ("近30日", analysis.return_30d, analysis.benchmark_return_30d),
+            ("近90日", analysis.return_90d, analysis.benchmark_return_90d),
+        ]:
+            if abs(fund_ret) < 0.001 and abs(bm_ret) < 0.001:
+                continue
+            delta = fund_ret - bm_ret
+            if delta > 0:
+                parts.append(f"✅ {period}跑赢 +{delta:.2f}%")
+            else:
+                parts.append(f"❌ {period}跑输 {delta:.2f}%")
     analysis.beats_benchmark_text = " | ".join(parts) if parts else "数据不足"
 
     # ---- Tiered take-profit strategy ----
@@ -877,6 +912,17 @@ def analyze_fund(
 
     # ---- Signal ----
     signal = generate_signal(analysis, stop_info, trend, ma_info)
+    # no_exit 策略（长期持有 QDII 等）：不产生卖出类信号——
+    # 止损/止盈/减仓都不适用，只保留持有/加仓框架，买入动作由跌多买多档位驱动。
+    if holding.no_exit and signal["signal_type"] in ("stop", "reduce", "watch", "profit"):
+        signal = {
+            "signal_type": "hold",
+            "signal_urgency": "normal",
+            "signal_message": (
+                "长期持有策略：不设止损/止盈卖出信号，专注下跌加仓"
+                "（见下方「跌多买多计划」档位）。"
+            ),
+        }
     analysis.signal_type = signal["signal_type"]
     analysis.signal_message = signal["signal_message"]
     analysis.signal_urgency = signal["signal_urgency"]

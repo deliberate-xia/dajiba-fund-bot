@@ -40,6 +40,8 @@ from src.store import (
     save_add_signal_state,
     load_signal_state,
     save_signal_state,
+    load_dip_buy_state,
+    save_dip_buy_state,
     _default_add_signal_state,
 )
 from src.analyzer import (
@@ -47,6 +49,7 @@ from src.analyzer import (
     compute_portfolio_summary,
     compute_reversal_signals,
     update_add_signal_state,
+    compute_dip_buy_status,
 )
 from src.macro import fetch_macro_snapshot, build_macro_brief
 from src.reporter import build_daily_report, build_extra_alert
@@ -397,6 +400,7 @@ def main():
     run_state = load_run_state(data_dir)
     add_state = load_add_signal_state(data_dir)  # 右侧加仓信号状态
     signal_state = load_signal_state(data_dir)   # 相同信号推送冷却状态
+    dip_state = load_dip_buy_state(data_dir)     # 跌多买多档位状态
 
     # Override tokens from env vars if available (GitHub Secrets)
     user_token = os.environ.get("PUSHPLUS_USER_TOKEN", prefs.pushplus_user_token)
@@ -417,10 +421,15 @@ def main():
     analyses = []
     alerts_to_send = []
     reversal_pushes = []  # 右侧加仓即时推送 (title, content)
+    dip_buy_pushes = []   # 跌多买多档位触发推送 (title, content)
     holdings_changed = False
     is_first_run = (run_state.get("total_runs", 0) == 0)
     reversal_cfg = prefs.reversal_add or {}
     reversal_profiles = reversal_cfg.get("profiles", ["sector"])
+    dip_cfg = prefs.dip_buy or {}
+    dip_enabled = dip_cfg.get("enabled", True)
+    dip_codes = dip_cfg.get("codes") or []
+    dip_tiers = dip_cfg.get("tiers", [])
 
     for fund_code, holding in holdings.items():
         print(f"\n--- [{fund_code}] {holding.fund_name} ---")
@@ -470,15 +479,16 @@ def main():
         if _confirm_pending_lots(holding, merged_nav):
             holdings_changed = True
 
-        # Fetch benchmark index
-        try:
-            benchmark_df = fetch_index_history(holding.benchmark_index)
-            print(f"  Fetched {len(benchmark_df)} benchmark records ({holding.benchmark_name})")
-        except Exception as e:
-            print(f"  WARNING: Benchmark fetch failed ({holding.benchmark_name}): {e}")
-            benchmark_df = load_index_history(holding.benchmark_index, data_dir)
-            print(f"  Using {len(benchmark_df)} cached benchmark records")
-
+        # Fetch benchmark index (海外 QDII 无 A 股基准指数，benchmark_index 为空则跳过)
+        benchmark_df = pd.DataFrame()
+        if holding.benchmark_index:
+            try:
+                benchmark_df = fetch_index_history(holding.benchmark_index)
+                print(f"  Fetched {len(benchmark_df)} benchmark records ({holding.benchmark_name})")
+            except Exception as e:
+                print(f"  WARNING: Benchmark fetch failed ({holding.benchmark_name}): {e}")
+                benchmark_df = load_index_history(holding.benchmark_index, data_dir)
+                print(f"  Using {len(benchmark_df)} cached benchmark records")
         if not benchmark_df.empty:
             save_index_history(holding.benchmark_index, benchmark_df, data_dir)
 
@@ -510,6 +520,59 @@ def main():
                     _process_reversal_signal(
                         holding, merged_nav, analysis, add_state, reversal_cfg, today,
                     )
+                )
+
+            # 跌多买多：净值回撤每跨过一个新档位 → 即时推送买入提醒。
+            # 一轮回撤内各档位只触发一次；净值创新高后整轮重置。
+            # 默认只对 no_exit（长期持有）基金生效，避免与趋势止损策略冲突；
+            # 配置了 codes 时只对列出的代码生效。
+            dip_eligible = (fund_code in dip_codes) if dip_codes else holding.no_exit
+            if dip_enabled and dip_eligible and dip_tiers:
+                nav_db = merged_nav.set_index("date")["nav"]
+                if not isinstance(nav_db.index, pd.DatetimeIndex):
+                    nav_db.index = pd.to_datetime(nav_db.index)
+                status = compute_dip_buy_status(nav_db, dip_cfg)
+                analysis.dip_buy_info = dict(status)
+                st = dip_state.get(fund_code, {"max_tier": 0})
+                old_max = int(st.get("max_tier", 0))
+                new_max = 0
+                for i, t in enumerate(dip_tiers, start=1):
+                    if i > old_max and status["drawdown_pct"] <= t.get("dd_pct", 0):
+                        new_max = i
+                if new_max > 0:
+                    st = {"max_tier": new_max, "last_trigger_date": today.isoformat()}
+                    dip_state[fund_code] = st
+                    analysis.dip_buy_info["just_triggered"] = new_max
+                    tier = dip_tiers[new_max - 1]
+                    left = dip_tiers[new_max:]
+                    title = f"📉 买入提醒：{holding.fund_name} 回撤 {status['drawdown_pct']:.1f}%"
+                    content = "\n".join([
+                        f"{fund_code} 净值距60日高点已回撤 **{status['drawdown_pct']:.1f}%**"
+                        f"（高点 {status['high_ref']:.4f}，当前净值 {analysis.current_nav:.4f}）",
+                        "",
+                        f"按「跌多买多」计划，触发第 {new_max}/{len(dip_tiers)} 档："
+                        f"买入 **¥{tier['amount']:,}**",
+                        "",
+                    ])
+                    if left:
+                        nxt = left[0]
+                        content += (f"下一档：回撤达 {abs(nxt['dd_pct']):.0f}% 时买入 "
+                                    f"¥{nxt['amount']:,}")
+                    else:
+                        content += "全部档位已触发，耐心持有等待反弹；若继续深跌，评估是否追加计划外资金。"
+                    content += ("\n\n⚠️ QDII 净值 T+2 披露，提醒以最新净值为准；"
+                                "实际买入可在行情下跌当日自行择时执行。")
+                    dip_buy_pushes.append((title, content))
+                elif status["drawdown_pct"] >= 0 and old_max > 0:
+                    # 净值创新高 → 本轮结束，档位重置
+                    dip_state[fund_code] = {"max_tier": 0,
+                                            "last_trigger_date": st.get("last_trigger_date", "")}
+                # 报告展示：当前已触发档位 + 下一档
+                cur_max = int(dip_state.get(fund_code, {}).get("max_tier", 0))
+                analysis.dip_buy_info["fired_count"] = cur_max
+                analysis.dip_buy_info["tier_count"] = len(dip_tiers)
+                analysis.dip_buy_info["next_tier"] = (
+                    dip_tiers[cur_max] if cur_max < len(dip_tiers) else None
                 )
         except Exception as e:
             print(f"  ERROR in analysis: {e}")
@@ -604,6 +667,12 @@ def main():
         send_alert(user_token, push_title, push_content)
         time.sleep(2)  # Respect rate limit between pushes
 
+    # ---- 9.5 跌多买多档位触发推送 ----
+    for push_title, push_content in dip_buy_pushes:
+        print(f"[DipBuy] Push: {push_title}")
+        send_alert(user_token, push_title, push_content)
+        time.sleep(2)  # Respect rate limit between pushes
+
     # ---- 10. Update run state ----
     run_state["last_run_date"] = today.isoformat()
     if ok:
@@ -631,6 +700,7 @@ def main():
 
     save_run_state(run_state, data_dir)
     save_add_signal_state(add_state, data_dir)
+    save_dip_buy_state(dip_state, data_dir)
 
     print(f"\n{'='*50}")
     print(f"Run complete. Funds: {len(analyses)}, Alerts: {len(alerts_to_send)}, "

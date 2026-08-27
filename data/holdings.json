@@ -131,6 +131,28 @@
     ],
     "skip_tracking": false
   },
+  "040046": {
+    "fund_code": "040046",
+    "fund_name": "华安纳斯达克100指数A",
+    "fund_type": "qdii_index",
+    "volatility_profile": "broad_market",
+    "benchmark_index": "",
+    "benchmark_name": "纳斯达克100（无本地基准）",
+    "cost_lots": [],
+    "skip_tracking": false,
+    "no_exit": true
+  },
+  "050025": {
+    "fund_code": "050025",
+    "fund_name": "博时标普500ETF联接A",
+    "fund_type": "qdii_index",
+    "volatility_profile": "broad_market",
+    "benchmark_index": "",
+    "benchmark_name": "标普500（无本地基准）",
+    "cost_lots": [],
+    "skip_tracking": false,
+    "no_exit": true
+  },
   "001338": {
     "fund_code": "001338",
     "fund_name": "安信稳健增值混合C",

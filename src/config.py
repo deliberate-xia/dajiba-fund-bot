@@ -32,6 +32,7 @@ class FundHolding:
     benchmark_name: str
     cost_lots: list[dict] = field(default_factory=list)
     skip_tracking: bool = False
+    no_exit: bool = False        # True: 长期持有策略，不产生止损/止盈卖出信号
 
     @property
     def total_invested(self) -> float:
@@ -143,6 +144,22 @@ class UserPreferences:
         "reentry_base_amount": 200.0,  # 清仓后重新入场的基准建仓金额（份额为0时使用）
     })
 
+    # ── 跌多买多（左侧下跌加仓计划）──
+    # 净值距 lookback_days 日内高点的回撤每跨过一个档位，推送一次买入提醒；
+    # 每个档位一轮回只提醒一次，净值创新高后整轮重置。
+    # 仅对 no_exit（长期持有，如 QDII）基金生效，与趋势止损策略互不干扰。
+    dip_buy: dict = field(default_factory=lambda: {
+        "enabled": True,
+        "codes": [],               # 空列表 = 所有 no_exit 基金；否则只对列出的代码生效
+        "lookback_days": 60,       # 回撤参考高点回溯天数
+        "tiers": [
+            {"dd_pct": -5,  "amount": 500},
+            {"dd_pct": -10, "amount": 1000},
+            {"dd_pct": -15, "amount": 1500},
+            {"dd_pct": -20, "amount": 2000},
+        ],
+    })
+
 
 # ---------------------------------------------------------------------------
 # I/O helpers
@@ -170,6 +187,7 @@ def load_holdings(path: Path | None = None) -> dict[str, FundHolding]:
             benchmark_name=obj.get("benchmark_name", ""),
             cost_lots=obj.get("cost_lots", []),
             skip_tracking=obj.get("skip_tracking", False),
+            no_exit=obj.get("no_exit", False),
         )
     return result
 
@@ -189,6 +207,7 @@ def save_holdings(holdings: dict[str, FundHolding], path: Path | None = None) ->
             "benchmark_name": h.benchmark_name,
             "cost_lots": h.cost_lots,
             "skip_tracking": h.skip_tracking,
+            "no_exit": h.no_exit,
         }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(raw, f, ensure_ascii=False, indent=2)
@@ -227,4 +246,5 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         trailing_stop_post_profit_multipliers=raw.get("trailing_stop_post_profit_multipliers", {}),
         take_profit_sell_ratios=raw.get("take_profit_sell_ratios", []),
         reversal_add=raw.get("reversal_add", {}),
+        dip_buy=raw.get("dip_buy", {}),
     )
