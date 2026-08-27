@@ -148,10 +148,35 @@ def _build_portfolio_overview(analyses: list, portfolio: dict, holdings: dict) -
     return "\n".join(lines)
 
 
-def _build_fund_detail(a, holding) -> str:
-    """Build the per-fund detail section."""
+def _build_fund_detail(a, holding, quiet: bool = False) -> str:
+    """Build the per-fund detail section.
+
+    quiet=True: same signal as the last pushed report (within cooldown) —
+    render a one-line summary instead of the full detail block, so the same
+    stop/reduce nagging isn't repeated every single day.
+    """
     if a is None:
         return ""
+
+    if quiet and a.signal_type not in ("pending",):
+        # 相同信号冷却期：只保留一行摘要（净值/止损线/信号），不再重复展开
+        icon = _traffic_icon(a.trend_light)
+        since = getattr(a, "signal_since", "")
+        since_str = f"自 {since[5:].replace('-', '/')}" if since else "多日"
+        sl_line = f"止损线 {a.effective_stop:.4f}（距 {fmt_pct(a.stop_distance_pct)}）"
+        tp_line = f"止盈线 {a.take_profit_price:.4f}" if a.take_profit_price else ""
+        return "\n".join([
+            f"## 🔍 {a.fund_code} {a.fund_name}",
+            "",
+            f"{icon} **{_signal_label(a.signal_type)}**（{since_str}连续提醒）"
+            f"— 与上次日报相同，操作建议不变，此处不再重复展开。",
+            "",
+            f"净值 **{a.current_nav:.4f}**（{fmt_pct(a.daily_change_pct)}）"
+            f"｜🛡️ {sl_line}｜🎯 {tp_line}",
+            "",
+            "---",
+            "",
+        ])
 
     if a.signal_type == "pending":
         pending_note = ""
@@ -254,7 +279,7 @@ def _build_fund_detail(a, holding) -> str:
             lines.append("- ⏳ 接近止盈目标；止损线也较近，注意触发前的回撤风险")
     elif a.stop_distance_pct > 10:
         lines.append("- ✅ 安全区间运行，未触发风控")
-    elif a.stop_distance_pct > 2:
+    elif a.stop_distance_pct > a.near_stop_band_pct:
         lines.append("- ⚠️ 正常区间，但建议关注止损距离")
     else:
         lines.append("- 🔴 接近止损线，请密切关注！")
@@ -431,6 +456,7 @@ def build_daily_report(
     bot_name: str = "大基吧",
     week_data: dict | None = None,
     macro_brief: str = "",
+    quiet_funds: dict | None = None,
 ) -> str:
     """
     Generate the complete Markdown daily report.
@@ -438,7 +464,11 @@ def build_daily_report(
     If is_friday and week_data is provided, includes a weekly review section
     with operation evaluation and forward-looking notes.
     If macro_brief is provided, includes a macro policy section.
+    quiet_funds: {fund_code: state} — funds whose signal is unchanged since
+    the last pushed report; render their detail sections as one-line summaries
+    instead of repeating the full signal message.
     """
+    quiet_funds = quiet_funds or {}
     sections = [
         _build_header(report_date, bot_name, missed_days),
         _build_portfolio_overview(analyses, portfolio, holdings),
@@ -454,7 +484,8 @@ def build_daily_report(
 
     for a in analyses:
         holding_ = holdings.get(a.fund_code) if a else None
-        sections.append(_build_fund_detail(a, holding_))
+        quiet = bool(quiet_funds.get(a.fund_code)) if a else False
+        sections.append(_build_fund_detail(a, holding_, quiet))
 
     # Footer: weekend note only if weekly review wasn't included
     if is_friday and not week_data:

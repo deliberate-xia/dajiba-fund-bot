@@ -150,6 +150,30 @@ def save_add_signal_state(state: dict, data_dir: Path) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Signal push state (cooldown: don't re-push the same signal every day)
+# ---------------------------------------------------------------------------
+
+def load_signal_state(data_dir: Path) -> dict:
+    """Load signal_state.json (persisted in repo so GitHub Actions state
+    survives across runs).
+
+    Format: {fund_code: {"signal_type": str, "since": "YYYY-MM-DD",
+                         "last_push": "YYYY-MM-DD"}}
+    """
+    file_path = data_dir / "signal_state.json"
+    if not file_path.exists():
+        return {}
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_signal_state(state: dict, data_dir: Path) -> None:
+    """Save signal_state.json."""
+    with open(data_dir / "signal_state.json", "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+
+
 def _default_run_state() -> dict:
     return {
         "last_run_date": None,

@@ -38,6 +38,8 @@ from src.store import (
     detect_missed_runs,
     load_add_signal_state,
     save_add_signal_state,
+    load_signal_state,
+    save_signal_state,
     _default_add_signal_state,
 )
 from src.analyzer import (
@@ -394,6 +396,7 @@ def main():
     prefs = load_preferences()
     run_state = load_run_state(data_dir)
     add_state = load_add_signal_state(data_dir)  # 右侧加仓信号状态
+    signal_state = load_signal_state(data_dir)   # 相同信号推送冷却状态
 
     # Override tokens from env vars if available (GitHub Secrets)
     user_token = os.environ.get("PUSHPLUS_USER_TOKEN", prefs.pushplus_user_token)
@@ -482,6 +485,14 @@ def main():
         # Analyze
         try:
             analysis = analyze_fund(holding, merged_nav, benchmark_df, prefs)
+            # 已清仓（份额=0）的基金不再报止损/减仓类信号——
+            # 持仓都没有了，催止损毫无意义；右侧加仓信号不受影响，另行提醒。
+            if holding.total_shares <= 0 and analysis.signal_type in ("stop", "reduce", "watch"):
+                analysis.signal_type = "hold"
+                analysis.signal_urgency = "normal"
+                analysis.signal_message = (
+                    "已清仓，等待重新入场机会。右侧止跌确认信号出现时会另行提醒。"
+                )
             analyses.append(analysis)
             print(f"  Trend: {analysis.trend_light} ({analysis.trend_score}pts) | "
                   f"Signal: {analysis.signal_type} | "
@@ -520,6 +531,30 @@ def main():
         save_holdings(holdings)
         print("[Main] Holdings updated with confirmed NAVs")
 
+    # ---- 5.5 相同信号推送冷却 ----
+    # 告警/警告类信号（止损/减仓/关注/止盈）在冷却期内折叠为一行摘要，
+    # 不每天重复同一份催促；信号变化或冷却期结束后恢复完整详情。
+    quiet_funds = {}
+    cooldown = int(prefs.signal_cooldown_days or 3)
+    for a in analyses:
+        if a is None or a.signal_urgency not in ("warning", "alert"):
+            continue
+        code = a.fund_code
+        prev = signal_state.get(code)
+        if not prev or prev.get("signal_type") != a.signal_type:
+            continue  # 首次出现或信号已变化 → 完整推送
+        try:
+            days_since = cal.trading_days_between(
+                date.fromisoformat(prev.get("last_push")), today)
+        except (ValueError, TypeError):
+            continue
+        if days_since <= cooldown:
+            a.signal_since = prev.get("since") or prev.get("last_push") or today.isoformat()
+            quiet_funds[code] = prev
+    if quiet_funds:
+        print(f"[Main] Signal cooldown: {len(quiet_funds)} fund(s) quiet "
+              f"({', '.join(quiet_funds)})")
+
     # ---- 6. Portfolio summary ----
     portfolio = compute_portfolio_summary(analyses)
     print(f"\n[Portfolio] Active: {portfolio.get('active_count', 0)}, "
@@ -546,6 +581,7 @@ def main():
         bot_name="大基吧",
         week_data=week_data,
         macro_brief=macro_brief,
+        quiet_funds=quiet_funds,
     )
 
     # ---- 8. Push daily report (single push to avoid rate limiting) ----
@@ -575,6 +611,23 @@ def main():
     run_state["total_runs"] = run_state.get("total_runs", 0) + 1
     if run_state.get("first_run_date") is None:
         run_state["first_run_date"] = today.isoformat()
+
+    # 信号推送状态：仅在推送成功时更新；冷却期内的基金保持原状，
+    # 这样"上次完整推送日"始终以用户真正收到的报告为准。
+    if ok:
+        today_iso = today.isoformat()
+        for a in analyses:
+            if a is None or a.fund_code in quiet_funds:
+                continue
+            code = a.fund_code
+            prev = signal_state.get(code) or {}
+            same_signal = prev.get("signal_type") == a.signal_type
+            signal_state[code] = {
+                "signal_type": a.signal_type,
+                "since": prev.get("since", today_iso) if same_signal else today_iso,
+                "last_push": today_iso,
+            }
+        save_signal_state(signal_state, data_dir)
 
     save_run_state(run_state, data_dir)
     save_add_signal_state(add_state, data_dir)

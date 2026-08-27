@@ -99,6 +99,11 @@ class UserPreferences:
     stop_loss_multipliers: dict = field(default_factory=lambda: {"broad_market": 2.5, "sector": 3.5})
     take_profit_multipliers: dict = field(default_factory=lambda: {"broad_market": 7.0, "sector": 6.0})
     hard_stop_loss_pct: dict = field(default_factory=lambda: {"broad_market": -0.08, "sector": -0.12})
+    # 距止损线 % 以内视为"接近止损"并发警告（收窄后正常波动不再频繁催）
+    near_stop_band_pct: float = 1.0
+    # 相同信号（如连续止损）多少交易日后才再次完整推送详情；
+    # 期间只显示一行"信号未变"摘要，避免每天重复同一份止损催促。
+    signal_cooldown_days: int = 3
     trend_score_thresholds: dict = field(default_factory=lambda: {"green": 65, "red": 35})
     timezone: str = "Asia/Shanghai"
 
@@ -215,6 +220,8 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         stop_loss_multipliers=raw.get("stop_loss_multipliers", {}),
         take_profit_multipliers=raw.get("take_profit_multipliers", {}),
         hard_stop_loss_pct=raw.get("hard_stop_loss_pct", {}),
+        near_stop_band_pct=raw.get("near_stop_band_pct", 1.0),
+        signal_cooldown_days=raw.get("signal_cooldown_days", 3),
         trend_score_thresholds=raw.get("trend_score_thresholds", {}),
         timezone=raw.get("timezone", "Asia/Shanghai"),
         trailing_stop_post_profit_multipliers=raw.get("trailing_stop_post_profit_multipliers", {}),

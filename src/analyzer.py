@@ -46,6 +46,7 @@ class FundAnalysis:
     take_profit_price: float = 0.0
     stop_distance_pct: float = 0.0
     profit_distance_pct: float = 0.0
+    near_stop_band_pct: float = 1.0  # 距止损线 % 以内算"接近止损"
 
     # ── 分批止盈 + 移动止盈 ──
     profit_tier: int = 0             # 0=none, 1=nearing, 2=triggered
@@ -75,6 +76,7 @@ class FundAnalysis:
     signal_type: str = "hold"       # "add" | "hold" | "reduce" | "watch" | "stop" | "profit" | "pending"
     signal_message: str = ""
     signal_urgency: str = "normal"  # "normal" | "warning" | "alert"
+    signal_since: str = ""          # 当前信号连续出现的起始日期（推送冷却展示用）
 
     # Data quality
     data_quality: str = "ok"        # "ok" | "insufficient" | "stale"
@@ -298,6 +300,7 @@ def compute_stop_loss_levels(
     stop_multipliers: dict,
     profit_multipliers: dict,
     hard_stop_pct_map: dict,
+    near_stop_band_pct: float = 1.0,
 ) -> dict:
     """
     Compute dynamic stop-loss and take-profit levels.
@@ -374,8 +377,9 @@ def compute_stop_loss_levels(
         "profit_triggered": current_nav >= take_profit_price,
         # Near-stop band must sit INSIDE the ATR trailing cushion, otherwise a
         # trailing stop (2.5×ATR below the high) makes "near stop" fire every
-        # single day while the fund is at its highs.
-        "near_stop": has_enough_data and 0 < stop_distance_pct <= 2,
+        # single day while the fund is at its highs. Configurable via
+        # preferences.near_stop_band_pct (default 1%).
+        "near_stop": has_enough_data and 0 < stop_distance_pct <= near_stop_band_pct,
         "near_profit": -3 <= profit_distance_pct < 0,
     }
 
@@ -786,7 +790,9 @@ def analyze_fund(
         preferences.stop_loss_multipliers,
         preferences.take_profit_multipliers,
         preferences.hard_stop_loss_pct,
+        preferences.near_stop_band_pct,
     )
+    analysis.near_stop_band_pct = preferences.near_stop_band_pct
     analysis.dynamic_stop = stop_info["dynamic_stop"]
     analysis.hard_stop = stop_info["hard_stop"]
     analysis.effective_stop = stop_info["effective_stop"]
