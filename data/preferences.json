@@ -19,7 +19,7 @@
   ],
   "reversal_add": {
     "enabled": true,
-    "profiles": ["sector"],
+    "profiles": ["sector", "broad_market"],
     "high_lookback": 20,
     "max_drawdown_pct": -10.0,
     "min_signals": 2,
@@ -33,10 +33,19 @@
     "codes": [],
     "lookback_days": 60,
     "tiers": [
-      { "dd_pct": -5,  "amount": 500 },
-      { "dd_pct": -10, "amount": 1000 },
-      { "dd_pct": -15, "amount": 1500 },
-      { "dd_pct": -20, "amount": 2000 }
+      { "dd_pct": -5,  "amount": 200 },
+      { "dd_pct": -10, "amount": 400 },
+      { "dd_pct": -15, "amount": 600 },
+      { "dd_pct": -20, "amount": 800 }
+    ]
+  },
+  "monthly_dca": {
+    "enabled": true,
+    "amount_cny": 500,
+    "allocations": [
+      { "fund_code": "040046", "fund_name": "华安纳斯达克100指数A", "weight": 0.25 },
+      { "fund_code": "050025", "fund_name": "博时标普500ETF联接A", "weight": 0.25 },
+      { "fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 0.50 }
     ]
   }
 }

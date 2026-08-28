@@ -153,10 +153,23 @@ class UserPreferences:
         "codes": [],               # 空列表 = 所有 no_exit 基金；否则只对列出的代码生效
         "lookback_days": 60,       # 回撤参考高点回溯天数
         "tiers": [
-            {"dd_pct": -5,  "amount": 500},
-            {"dd_pct": -10, "amount": 1000},
-            {"dd_pct": -15, "amount": 1500},
-            {"dd_pct": -20, "amount": 2000},
+            {"dd_pct": -5,  "amount": 200},
+            {"dd_pct": -10, "amount": 400},
+            {"dd_pct": -15, "amount": 600},
+            {"dd_pct": -20, "amount": 800},
+        ],
+    })
+
+    # ── 每月定投提醒（长期复利现金流引擎）──
+    # 每月第一个交易日下午推送一次定投提醒，金额按 allocations 权重拆分到各基金。
+    # 机械执行，不看涨跌；金额随收入增长直接在 preferences.json 调整。
+    monthly_dca: dict = field(default_factory=lambda: {
+        "enabled": True,
+        "amount_cny": 500,
+        "allocations": [
+            {"fund_code": "040046", "fund_name": "华安纳斯达克100指数A", "weight": 0.25},
+            {"fund_code": "050025", "fund_name": "博时标普500ETF联接A", "weight": 0.25},
+            {"fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 0.50},
         ],
     })
 
@@ -247,4 +260,5 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         take_profit_sell_ratios=raw.get("take_profit_sell_ratios", []),
         reversal_add=raw.get("reversal_add", {}),
         dip_buy=raw.get("dip_buy", {}),
+        monthly_dca=raw.get("monthly_dca", {}),
     )

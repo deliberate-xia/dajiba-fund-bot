@@ -673,6 +673,32 @@ def main():
         send_alert(user_token, push_title, push_content)
         time.sleep(2)  # Respect rate limit between pushes
 
+    # ---- 9.6 每月定投日提醒 ----
+    # 每月第一个交易日（前一交易日若在上月）推一条定投提醒，
+    # 金额按 allocations 权重拆分到各基金；机械执行，不看涨跌。
+    dca_cfg = prefs.monthly_dca or {}
+    if dca_cfg.get("enabled", False):
+        prev_td = cal.previous_trading_day(today)
+        is_first_td = (prev_td is None or prev_td.month != today.month)
+        if is_first_td:
+            total = float(dca_cfg.get("amount_cny", 0))
+            allocs = dca_cfg.get("allocations", [])
+            if total > 0 and allocs:
+                lines = [f"📅 本月定投日（每月第一个交易日）\n",
+                         f"按计划定投 **¥{total:,.0f}**，拆分如下：", ""]
+                for al in allocs:
+                    amt = total * float(al.get("weight", 0))
+                    lines.append(f"- {al.get('fund_name', '')} "
+                                 f"({al.get('fund_code', '')}): ¥{amt:,.0f}")
+                lines += [
+                    "",
+                    "⚠️ 15:00 前申购按当日净值，15:00 后按下一交易日净值。",
+                    "定投不看涨跌，机械执行——长期复利的引擎就是纪律。",
+                ]
+                send_alert(user_token, "📅 定投日提醒", "\n".join(lines))
+                print(f"[DCA] Monthly DCA reminder pushed (¥{total:,.0f})")
+                time.sleep(2)  # Respect rate limit between pushes
+
     # ---- 10. Update run state ----
     run_state["last_run_date"] = today.isoformat()
     if ok:
