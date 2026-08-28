@@ -686,6 +686,11 @@ def main():
         if is_last_td:
             total = float(dca_cfg.get("amount_cny", 0))
             allocs = dca_cfg.get("allocations", [])
+            # 本月跌买已触发过 → 用户已买入，跳过兜底提醒（避免重复催促）
+            month_prefix = today.strftime("%Y-%m")
+            allocs = [al for al in allocs
+                      if not dip_state.get(al.get("fund_code", ""), {})
+                      .get("last_trigger_date", "").startswith(month_prefix)]
             if total > 0 and allocs:
                 lines = [f"📅 月末兜底：本月 {allocs[0].get('fund_name', '')} 的 ¥{total:,.0f}",
                          "如本月已触发 -3% 跌买并买入，请忽略本条。", ""]
