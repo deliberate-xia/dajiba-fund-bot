@@ -430,6 +430,7 @@ def main():
     dip_enabled = dip_cfg.get("enabled", True)
     dip_codes = dip_cfg.get("codes") or []
     dip_tiers = dip_cfg.get("tiers", [])
+    dip_per_code_tiers = dip_cfg.get("per_code_tiers", {}) or {}
 
     for fund_code, holding in holdings.items():
         print(f"\n--- [{fund_code}] {holding.fund_name} ---")
@@ -525,32 +526,34 @@ def main():
             # 跌多买多：净值回撤每跨过一个新档位 → 即时推送买入提醒。
             # 一轮回撤内各档位只触发一次；净值创新高后整轮重置。
             # 默认只对 no_exit（长期持有）基金生效，避免与趋势止损策略冲突；
-            # 配置了 codes 时只对列出的代码生效。
-            dip_eligible = (fund_code in dip_codes) if dip_codes else holding.no_exit
-            if dip_enabled and dip_eligible and dip_tiers:
+            # 配置了 codes 时只对列出的代码生效；per_code_tiers 可单独指定某基金的档位。
+            fund_tiers = dip_per_code_tiers.get(fund_code) or dip_tiers
+            dip_eligible = ((fund_code in dip_codes) if dip_codes else holding.no_exit) \
+                or fund_code in dip_per_code_tiers
+            if dip_enabled and dip_eligible and fund_tiers:
                 nav_db = merged_nav.set_index("date")["nav"]
                 if not isinstance(nav_db.index, pd.DatetimeIndex):
                     nav_db.index = pd.to_datetime(nav_db.index)
-                status = compute_dip_buy_status(nav_db, dip_cfg)
+                status = compute_dip_buy_status(nav_db, {**dip_cfg, "tiers": fund_tiers})
                 analysis.dip_buy_info = dict(status)
                 st = dip_state.get(fund_code, {"max_tier": 0})
                 old_max = int(st.get("max_tier", 0))
                 new_max = 0
-                for i, t in enumerate(dip_tiers, start=1):
+                for i, t in enumerate(fund_tiers, start=1):
                     if i > old_max and status["drawdown_pct"] <= t.get("dd_pct", 0):
                         new_max = i
                 if new_max > 0:
                     st = {"max_tier": new_max, "last_trigger_date": today.isoformat()}
                     dip_state[fund_code] = st
                     analysis.dip_buy_info["just_triggered"] = new_max
-                    tier = dip_tiers[new_max - 1]
-                    left = dip_tiers[new_max:]
+                    tier = fund_tiers[new_max - 1]
+                    left = fund_tiers[new_max:]
                     title = f"📉 买入提醒：{holding.fund_name} 回撤 {status['drawdown_pct']:.1f}%"
                     content = "\n".join([
                         f"{fund_code} 净值距60日高点已回撤 **{status['drawdown_pct']:.1f}%**"
                         f"（高点 {status['high_ref']:.4f}，当前净值 {analysis.current_nav:.4f}）",
                         "",
-                        f"按「跌多买多」计划，触发第 {new_max}/{len(dip_tiers)} 档："
+                        f"按「跌多买多」计划，触发第 {new_max}/{len(fund_tiers)} 档："
                         f"买入 **¥{tier['amount']:,}**",
                         "",
                     ])
@@ -570,9 +573,9 @@ def main():
                 # 报告展示：当前已触发档位 + 下一档
                 cur_max = int(dip_state.get(fund_code, {}).get("max_tier", 0))
                 analysis.dip_buy_info["fired_count"] = cur_max
-                analysis.dip_buy_info["tier_count"] = len(dip_tiers)
+                analysis.dip_buy_info["tier_count"] = len(fund_tiers)
                 analysis.dip_buy_info["next_tier"] = (
-                    dip_tiers[cur_max] if cur_max < len(dip_tiers) else None
+                    fund_tiers[cur_max] if cur_max < len(fund_tiers) else None
                 )
         except Exception as e:
             print(f"  ERROR in analysis: {e}")
@@ -673,30 +676,29 @@ def main():
         send_alert(user_token, push_title, push_content)
         time.sleep(2)  # Respect rate limit between pushes
 
-    # ---- 9.6 每月定投日提醒 ----
-    # 每月第一个交易日（前一交易日若在上月）推一条定投提醒，
-    # 金额按 allocations 权重拆分到各基金；机械执行，不看涨跌。
+    # ---- 9.6 月末定投兜底提醒 ----
+    # 逢跌买多（dip_buy）优先触发买入；若整月未触发，本月最后一个交易日
+    # （下一交易日若在下月）推一条兜底提醒，避免错过月度积累。
     dca_cfg = prefs.monthly_dca or {}
     if dca_cfg.get("enabled", False):
-        prev_td = cal.previous_trading_day(today)
-        is_first_td = (prev_td is None or prev_td.month != today.month)
-        if is_first_td:
+        nxt_td = cal.next_trading_day(today)
+        is_last_td = (nxt_td is None or nxt_td.month != today.month)
+        if is_last_td:
             total = float(dca_cfg.get("amount_cny", 0))
             allocs = dca_cfg.get("allocations", [])
             if total > 0 and allocs:
-                lines = [f"📅 本月定投日（每月第一个交易日）\n",
-                         f"按计划定投 **¥{total:,.0f}**，拆分如下：", ""]
+                lines = [f"📅 月末兜底：本月 {allocs[0].get('fund_name', '')} 的 ¥{total:,.0f}",
+                         "如本月已触发 -3% 跌买并买入，请忽略本条。", ""]
                 for al in allocs:
                     amt = total * float(al.get("weight", 0))
-                    lines.append(f"- {al.get('fund_name', '')} "
-                                 f"({al.get('fund_code', '')}): ¥{amt:,.0f}")
+                    lines.append(f"否则：今天是本月最后一个交易日，"
+                                 f"15:00 前买入 ¥{amt:,.0f}（{al.get('fund_code', '')}）")
                 lines += [
                     "",
-                    "⚠️ 15:00 前申购按当日净值，15:00 后按下一交易日净值。",
-                    "定投不看涨跌，机械执行——长期复利的引擎就是纪律。",
+                    "规则：跌买优先触发，月末兜底；金额固定，不择时不追加。",
                 ]
-                send_alert(user_token, "📅 定投日提醒", "\n".join(lines))
-                print(f"[DCA] Monthly DCA reminder pushed (¥{total:,.0f})")
+                send_alert(user_token, "📅 月末定投兜底提醒", "\n".join(lines))
+                print(f"[DCA] Month-end fallback pushed (¥{total:,.0f})")
                 time.sleep(2)  # Respect rate limit between pushes
 
     # ---- 10. Update run state ----

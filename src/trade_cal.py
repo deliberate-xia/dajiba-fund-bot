@@ -65,6 +65,14 @@ class TradingCalendar:
         candidates = sorted(td for td in self._dates if td < d)
         return candidates[-1] if candidates else None
 
+    def next_trading_day(self, d: date) -> date | None:
+        """Get the immediately following trading day (None if beyond cache)."""
+        self._ensure_loaded()
+        if not self._dates:
+            return None
+        candidates = sorted(td for td in self._dates if td > d)
+        return candidates[0] if candidates else None
+
     def is_friday(self, d: date | None = None) -> bool:
         """Check if given date falls on a Friday."""
         if d is None:

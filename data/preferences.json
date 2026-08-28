@@ -31,6 +31,9 @@
   "dip_buy": {
     "enabled": true,
     "codes": [],
+    "per_code_tiers": {
+      "003015": [ { "dd_pct": -3, "amount": 150 } ]
+    },
     "lookback_days": 60,
     "tiers": [
       { "dd_pct": -5,  "amount": 200 },
@@ -41,11 +44,9 @@
   },
   "monthly_dca": {
     "enabled": true,
-    "amount_cny": 500,
+    "amount_cny": 150,
     "allocations": [
-      { "fund_code": "040046", "fund_name": "华安纳斯达克100指数A", "weight": 0.35 },
-      { "fund_code": "017641", "fund_name": "摩根标普500指数(QDII)人民币A", "weight": 0.35 },
-      { "fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 0.30 }
+      { "fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 1.0 }
     ]
   }
 }
