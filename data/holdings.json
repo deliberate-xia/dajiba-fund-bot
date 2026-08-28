@@ -138,16 +138,17 @@
     "skip_tracking": false,
     "no_exit": true
   },
-  "050025": {
-    "fund_code": "050025",
-    "fund_name": "博时标普500ETF联接A",
+  "017641": {
+    "fund_code": "017641",
+    "fund_name": "摩根标普500指数(QDII)人民币A",
     "fund_type": "qdii_index",
     "volatility_profile": "broad_market",
     "benchmark_index": "",
     "benchmark_name": "标普500（无本地基准）",
     "cost_lots": [],
     "skip_tracking": false,
-    "no_exit": true
+    "no_exit": true,
+    "note": "2026-08-28 替代博时050025（暂停申购）；开放申购"
   },
   "001338": {
     "fund_code": "001338",
