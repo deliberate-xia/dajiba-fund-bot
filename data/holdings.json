@@ -25,11 +25,11 @@
       },
       {
         "date": "2026-08-27",
-        "amount_cny": -342.61,
-        "nav_at_purchase": 2.1568,
+        "amount_cny": -338.75,
+        "nav_at_purchase": 2.1325,
         "shares": -158.85,
         "nav_confirmed": true,
-        "note": "8/27 15:00前全部转换转出→安信稳健001338，待净值确认"
+        "note": "8/27 15:00前全部转换转出→安信稳健001338，App确认158.85份@净值2.1325，转出338.75"
       }
     ],
     "skip_tracking": false,
@@ -196,6 +196,14 @@
         "shares": 283.54,
         "nav_confirmed": true,
         "note": "8/17 白酒(161725)全部转换转入283.54份，App确认净值1.7757"
+      },
+      {
+        "date": "2026-08-27",
+        "amount_cny": 338.75,
+        "nav_at_purchase": 1.7856,
+        "shares": 189.71,
+        "nav_confirmed": true,
+        "note": "8/27 沪深300(003015)全部转换转入189.71份，App确认净值1.7856"
       }
     ],
     "skip_tracking": false,
