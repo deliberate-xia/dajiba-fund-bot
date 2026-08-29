@@ -32,7 +32,7 @@
     "enabled": true,
     "codes": [],
     "per_code_tiers": {
-      "003015": [ { "dd_pct": -3, "amount": 150 } ]
+      "003015": [ { "dd_pct": -3, "amount": 100 } ]
     },
     "lookback_days": 60,
     "tiers": [
@@ -44,7 +44,7 @@
   },
   "monthly_dca": {
     "enabled": true,
-    "amount_cny": 150,
+    "amount_cny": 100,
     "allocations": [
       { "fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 1.0 }
     ]
