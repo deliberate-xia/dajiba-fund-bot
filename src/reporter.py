@@ -378,6 +378,24 @@ def _build_fund_detail(a, holding, quiet: bool = False) -> str:
     return "\n".join(lines)
 
 
+def _build_satellite_rotation(evals: list) -> str:
+    """卫星仓轮换评估：已清仓且长期 idle 的行业基金，提示可换入新行业。"""
+    lines = ["## 🔄 卫星仓轮换评估", ""]
+    for ev in evals:
+        lines.append(
+            f"- **{ev['fund_name']}**（{ev['fund_code']}）：已空仓 idle "
+            f"{ev['days_since']} 天（{ev['exit_date']} 清仓），长期无右侧信号。"
+        )
+    lines += [
+        "",
+        "按规则「框架不变、标的可轮换」：如需换入新行业，找 Claude 扫行业候选，"
+        "拍板后改配置一次 push 生效。",
+        "---",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def _build_footer(bot_name: str) -> str:
     lines = [
         f"> ⚠️ 本报告由{bot_name}自动生成，仅供参考，不构成投资建议。",
@@ -502,6 +520,7 @@ def build_daily_report(
     week_data: dict | None = None,
     macro_brief: str = "",
     quiet_funds: dict | None = None,
+    rotation_evals: list | None = None,
 ) -> str:
     """
     Generate the complete Markdown daily report.
@@ -522,6 +541,10 @@ def build_daily_report(
     # Macro policy section (after overview, before per-fund details)
     if macro_brief:
         sections.append(macro_brief)
+
+    # Satellite rotation evaluation (after macro, before per-fund details)
+    if rotation_evals:
+        sections.append(_build_satellite_rotation(rotation_evals))
 
     # Weekly review goes after portfolio overview but before per-fund details
     if is_friday and week_data:

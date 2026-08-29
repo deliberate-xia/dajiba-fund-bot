@@ -267,6 +267,54 @@ def _evaluate_operation(holding, lot, lot_date: date, note: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Satellite rotation evaluation (卫星仓轮换评估)
+# ---------------------------------------------------------------------------
+
+_SATELLITE_ROTATION_MIN_IDLE_DAYS = 90  # 清仓后 idle 满 3 个月提示轮换
+
+
+def _compute_satellite_rotation_evals(
+    holdings: dict,
+    add_state: dict,
+    today: date,
+    min_idle_days: int = _SATELLITE_ROTATION_MIN_IDLE_DAYS,
+) -> list[dict]:
+    """
+    卫星仓（行业基金）轮换评估：已清仓且长期无右侧信号 → 提示可换行业。
+
+    规则（2026-08-29 用户拍板）：框架永不换、标的可轮换。
+    某卫星基金份额=0 且 idle 超过 min_idle_days 天（默认 90 天）
+    视为行业退场，日报提示评估换入新行业。
+    """
+    evals = []
+    for code, h in holdings.items():
+        if h.volatility_profile != "sector":
+            continue  # 只评估行业卫星仓
+        if h.total_shares > 0:
+            continue  # 有持仓不提前换，等信号自然给出动作
+        if add_state.get(code, {}).get("status") != "idle":
+            continue  # 右侧信号进行中，不评估轮换
+        # 清仓日 = 份额为负的 lot 里最晚的日期（清仓后不会再有新 lot）
+        exit_dates = [lot.get("date", "") for lot in h.cost_lots
+                      if lot.get("shares", 0) < 0 and lot.get("date")]
+        if not exit_dates:
+            continue
+        exit_date = max(exit_dates)
+        try:
+            days_since = (today - date.fromisoformat(exit_date)).days
+        except (ValueError, TypeError):
+            continue
+        if days_since >= min_idle_days:
+            evals.append({
+                "fund_code": code,
+                "fund_name": h.fund_name,
+                "exit_date": exit_date,
+                "days_since": days_since,
+            })
+    return evals
+
+
+# ---------------------------------------------------------------------------
 # Right-side add-position (右侧加仓)
 # ---------------------------------------------------------------------------
 
@@ -630,6 +678,9 @@ def main():
     is_friday = cal.is_friday(today)
     week_data = _collect_weekly_data(holdings, analyses, today) if is_friday else None
 
+    # 卫星仓轮换评估：清仓且 idle 满 90 天的行业基金 → 日报提示可换新行业
+    rotation_evals = _compute_satellite_rotation_evals(holdings, add_state, today)
+
     # Fetch macro data
     macro_brief = ""
     try:
@@ -648,6 +699,7 @@ def main():
         week_data=week_data,
         macro_brief=macro_brief,
         quiet_funds=quiet_funds,
+        rotation_evals=rotation_evals,
     )
 
     # ---- 8. Push daily report (single push to avoid rate limiting) ----
