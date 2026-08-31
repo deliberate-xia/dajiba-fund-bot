@@ -22,5 +22,29 @@
     "signal_since": "",
     "reference_nav": 0.0,
     "recent_low": 0.0
+  },
+  "003015": {
+    "fund_code": "003015",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
+  },
+  "040046": {
+    "fund_code": "040046",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
+  },
+  "017641": {
+    "fund_code": "017641",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
   }
 }
