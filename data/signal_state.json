@@ -2,27 +2,27 @@
   "003015": {
     "signal_type": "hold",
     "since": "2026-09-01",
-    "last_push": "2026-09-01"
+    "last_push": "2026-09-02"
   },
   "018927": {
-    "signal_type": "stop",
-    "since": "2026-09-01",
-    "last_push": "2026-09-01"
+    "signal_type": "hold",
+    "since": "2026-09-02",
+    "last_push": "2026-09-02"
   },
   "161725": {
     "signal_type": "hold",
     "since": "2026-08-28",
-    "last_push": "2026-09-01"
+    "last_push": "2026-09-02"
   },
   "017140": {
     "signal_type": "reduce",
     "since": "2026-08-28",
-    "last_push": "2026-08-28"
+    "last_push": "2026-09-02"
   },
   "040046": {
     "signal_type": "hold",
     "since": "2026-08-28",
-    "last_push": "2026-09-01"
+    "last_push": "2026-09-02"
   },
   "050025": {
     "signal_type": "hold",
@@ -32,11 +32,11 @@
   "001338": {
     "signal_type": "add",
     "since": "2026-08-28",
-    "last_push": "2026-09-01"
+    "last_push": "2026-09-02"
   },
   "017641": {
     "signal_type": "hold",
     "since": "2026-09-01",
-    "last_push": "2026-09-01"
+    "last_push": "2026-09-02"
   }
 }
