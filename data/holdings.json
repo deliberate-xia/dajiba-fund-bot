@@ -30,6 +30,12 @@
         "shares": -158.85,
         "nav_confirmed": true,
         "note": "8/27 15:00前全部转换转出→安信稳健001338，App确认158.85份@净值2.1325，转出338.75"
+      },
+      {
+        "date": "2026-09-01",
+        "amount_cny": 100.0,
+        "nav_confirmed": false,
+        "note": "9/1 15:00后逢跌买多提醒买入¥100（-3%档），按9/2净值确认，待App核对"
       }
     ],
     "skip_tracking": false,
