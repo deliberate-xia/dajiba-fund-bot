@@ -58,6 +58,22 @@
         "shares": 242.81,
         "nav_confirmed": true,
         "note": "沪深300赎回1/3转入，待确认净值"
+      },
+      {
+        "date": "2026-08-31",
+        "amount_cny": -842.41,
+        "nav_at_purchase": 1.3814,
+        "shares": -609.82,
+        "nav_confirmed": true,
+        "note": "8/31 15:00前全部赎回清仓（止损执行），App确认609.82份@1.3814=842.41，C类持超7天免赎回费"
+      },
+      {
+        "date": "2026-08-31",
+        "amount_cny": 1.73,
+        "nav_at_purchase": 1.3814,
+        "shares": 1.25,
+        "nav_confirmed": true,
+        "note": "份额补正：原记录买入合计608.57份，App清仓确认为609.82份，差额1.25份（≈¥1.73，来源未明：买入估算误差或红利再投），以App数为准"
       }
     ],
     "skip_tracking": false,
