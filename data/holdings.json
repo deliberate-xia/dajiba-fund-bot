@@ -166,7 +166,24 @@
     "volatility_profile": "broad_market",
     "benchmark_index": "",
     "benchmark_name": "纳斯达克100（无本地基准）",
-    "cost_lots": [],
+    "cost_lots": [
+      {
+        "date": "2026-09-03",
+        "amount_cny": 29.88,
+        "nav_at_purchase": 8.0821,
+        "shares": 3.6971,
+        "nav_confirmed": true,
+        "note": "存量并入总览：9/3 App市值29.88，按9/1净值8.0821折算份额3.6971（估算；历史成本未追溯，基准按市值、盈亏自9/3起算，可再补正）"
+      },
+      {
+        "date": "2026-09-02",
+        "amount_cny": 10.0,
+        "nav_at_purchase": null,
+        "shares": null,
+        "nav_confirmed": false,
+        "note": "周定投计划（每周一~三 15:00前）¥10：9/2周三单已扣款，按9/2净值成交，待App确认净值/份额后补全"
+      }
+    ],
     "skip_tracking": false,
     "no_exit": true
   },
@@ -177,7 +194,52 @@
     "volatility_profile": "broad_market",
     "benchmark_index": "",
     "benchmark_name": "标普500（无本地基准）",
-    "cost_lots": [],
+    "cost_lots": [
+      {
+        "date": "2026-09-03",
+        "amount_cny": 49.71,
+        "nav_at_purchase": 1.6965,
+        "shares": 29.3015,
+        "nav_confirmed": true,
+        "note": "存量并入总览：9/3 App市值49.71，按9/1净值1.6965折算份额29.3015（估算；历史成本未追溯，基准按市值、盈亏自9/3起算，可再补正）"
+      },
+      {
+        "date": "2026-09-02",
+        "amount_cny": 10.0,
+        "nav_at_purchase": null,
+        "shares": null,
+        "nav_confirmed": false,
+        "note": "周定投计划（每周三~五 15:00前）¥10：9/2周三单已扣款，按9/2净值成交，待App确认净值/份额后补全"
+      },
+      {
+        "date": "2026-09-03",
+        "amount_cny": 10.0,
+        "nav_at_purchase": null,
+        "shares": null,
+        "nav_confirmed": false,
+        "note": "周定投计划（每周三~五 15:00前）¥10：9/3周四单已扣款，按9/3净值成交，待App确认净值/份额后补全"
+      }
+    ],
+    "skip_tracking": false,
+    "no_exit": true
+  },
+  "270042": {
+    "fund_code": "270042",
+    "fund_name": "广发纳斯达克100指数A",
+    "fund_type": "qdii_index",
+    "volatility_profile": "broad_market",
+    "benchmark_index": "",
+    "benchmark_name": "纳斯达克100（无本地基准）",
+    "cost_lots": [
+      {
+        "date": "2026-09-03",
+        "amount_cny": 9.9,
+        "nav_at_purchase": 8.0483,
+        "shares": 1.2301,
+        "nav_confirmed": true,
+        "note": "存量并入总览：9/3 App市值9.90，按9/1净值8.0483折算份额1.2301（估算；历史成本未追溯，基准按市值、盈亏自9/3起算，可再补正）"
+      }
+    ],
     "skip_tracking": false,
     "no_exit": true
   },
