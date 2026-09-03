@@ -238,6 +238,21 @@ class UserPreferences:
         ],
     })
 
+    # ── 周定投自动记账（平台固定计划，无需人工报告确认）──
+    # 平台每日定投计划：每个计划日 15:00 前扣款 amount_cny，手续费 fee_cny，
+    # 成交净值 = 下单日净值。bot 在净值入库后自动落账（净额 = amount − fee），
+    # 无需用户逐笔报告。weekdays: python weekday（周一=0 … 周日=6）。
+    # 暂停计划 / 改金额时改这里（enabled: false 即停止自动记账），并通知助手。
+    weekly_dca: dict = field(default_factory=lambda: {
+        "enabled": True,
+        "amount_cny": 10.0,
+        "fee_cny": 0.01,
+        "plans": [
+            {"fund_code": "040046", "weekdays": [0, 1, 2]},     # 周一~三
+            {"fund_code": "017641", "weekdays": [2, 3, 4]},     # 周三~五
+        ],
+    })
+
 
 # ---------------------------------------------------------------------------
 # I/O helpers
@@ -326,4 +341,5 @@ def load_preferences(path: Path | None = None) -> UserPreferences:
         reversal_add=raw.get("reversal_add", {}),
         dip_buy=raw.get("dip_buy", {}),
         monthly_dca=raw.get("monthly_dca", {}),
+        weekly_dca=raw.get("weekly_dca", {}),
     )

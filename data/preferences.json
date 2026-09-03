@@ -48,5 +48,14 @@
     "allocations": [
       { "fund_code": "003015", "fund_name": "中金沪深300指数增强A", "weight": 1.0 }
     ]
+  },
+  "weekly_dca": {
+    "enabled": true,
+    "amount_cny": 10.0,
+    "fee_cny": 0.01,
+    "plans": [
+      { "fund_code": "040046", "fund_name": "华安纳斯达克100指数A", "weekdays": [0, 1, 2] },
+      { "fund_code": "017641", "fund_name": "摩根标普500指数(QDII)人民币A", "weekdays": [2, 3, 4] }
+    ]
   }
 }

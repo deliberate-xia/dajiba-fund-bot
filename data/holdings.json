@@ -177,11 +177,11 @@
       },
       {
         "date": "2026-09-02",
-        "amount_cny": 10.0,
+        "amount_cny": 9.99,
         "nav_at_purchase": null,
         "shares": null,
         "nav_confirmed": false,
-        "note": "周定投计划（每周一~三 15:00前）¥10：9/2周三单已扣款，按9/2净值成交，待App确认净值/份额后补全"
+        "note": "周定投计划（每周一~三 15:00前）¥10、手续费0.01→净9.99：9/2周三单，已启用自动确认（净值入库后自动补全）"
       }
     ],
     "skip_tracking": false,
@@ -205,19 +205,19 @@
       },
       {
         "date": "2026-09-02",
-        "amount_cny": 10.0,
+        "amount_cny": 9.99,
         "nav_at_purchase": null,
         "shares": null,
         "nav_confirmed": false,
-        "note": "周定投计划（每周三~五 15:00前）¥10：9/2周三单已扣款，按9/2净值成交，待App确认净值/份额后补全"
+        "note": "周定投计划（每周三~五 15:00前）¥10、手续费0.01→净9.99：9/2周三单，已启用自动确认（净值入库后自动补全）"
       },
       {
         "date": "2026-09-03",
-        "amount_cny": 10.0,
+        "amount_cny": 9.99,
         "nav_at_purchase": null,
         "shares": null,
         "nav_confirmed": false,
-        "note": "周定投计划（每周三~五 15:00前）¥10：9/3周四单已扣款，按9/3净值成交，待App确认净值/份额后补全"
+        "note": "周定投计划（每周三~五 15:00前）¥10、手续费0.01→净9.99：9/3周四单，已启用自动确认（净值入库后自动补全）"
       }
     ],
     "skip_tracking": false,

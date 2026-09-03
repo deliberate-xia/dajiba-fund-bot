@@ -521,6 +521,7 @@ def build_daily_report(
     macro_brief: str = "",
     quiet_funds: dict | None = None,
     rotation_evals: list | None = None,
+    dca_notes: list | None = None,
 ) -> str:
     """
     Generate the complete Markdown daily report.
@@ -531,12 +532,19 @@ def build_daily_report(
     quiet_funds: {fund_code: state} — funds whose signal is unchanged since
     the last pushed report; render their detail sections as one-line summaries
     instead of repeating the full signal message.
+    dca_notes: 周定投自动记账（确认/新落账）当日播报行。
     """
     quiet_funds = quiet_funds or {}
     sections = [
         _build_header(report_date, bot_name, missed_days),
         _build_portfolio_overview(analyses, portfolio, holdings),
     ]
+
+    # 定投自动记账播报（总览之后、宏观之前；仅在当日有确认/新单时出现）
+    if dca_notes:
+        block = ["## 📌 定投自动记账", ""] + [f"- {n}" for n in dca_notes]
+        block += ["", "---", ""]
+        sections.append("\n".join(block))
 
     # Macro policy section (after overview, before per-fund details)
     if macro_brief:

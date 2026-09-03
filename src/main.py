@@ -6,7 +6,7 @@ Entry point for GitHub Actions workflow.
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 # Fix Unicode output on Windows (GBK terminal → UTF-8)
@@ -129,6 +129,72 @@ def _confirm_pending_lots(holding: FundHolding, nav_df) -> bool:
         print(f"[{holding.fund_code}] All lots confirmed — tracking enabled.")
 
     return changed
+
+
+def _book_weekly_dca(holding: FundHolding, nav_df, dca_cfg: dict,
+                     today: date | None = None) -> list[str]:
+    """
+    Auto-book scheduled weekly-DCA purchases (e.g. 040046 Mon-Wed, 017641
+    Wed-Fri, ¥10 each, ¥0.01 fee) once the order day's NAV row lands in the
+    fund's history. QDII NAV rows arrive 1-2 trading days late, so a lot is
+    booked a few days after the order, still at the ORDER DAY's NAV.
+
+    The platform DCA plan fires on every scheduled weekday that is a trading
+    day (a holiday has no NAV row, so it is naturally skipped), so "scheduled
+    weekday + published NAV row for that date" is treated as execution
+    evidence. Idempotent: an existing lot on the same date (manual or auto)
+    suppresses booking. Only dates >= the fund's earliest lot date are
+    considered, so the pre-ledger period already covered by a market-value
+    snapshot lot is never back-filled with phantom purchases.
+
+    Returns report lines for the daily push (empty when nothing was booked).
+    """
+    if (not dca_cfg or not dca_cfg.get("enabled", True)
+            or nav_df is None or nav_df.empty):
+        return []
+    plans = {p.get("fund_code"): p for p in (dca_cfg.get("plans") or [])
+             if p.get("fund_code")}
+    plan = plans.get(holding.fund_code)
+    if not plan:
+        return []
+    amount = float(dca_cfg.get("amount_cny", 10.0))
+    fee = float(dca_cfg.get("fee_cny", 0.0))
+    net = round(amount - fee, 2)
+    weekdays = set(plan.get("weekdays") or [])
+    nav_map = {str(d): float(nav) for d, nav in zip(nav_df["date"], nav_df["nav"])}
+    existing = {l.get("date") for l in holding.cost_lots if l.get("date")}
+    if today is None:
+        today = date.today()
+    floor = min(existing) if existing else (today - timedelta(days=365)).isoformat()
+
+    lines = []
+    # Walk recent calendar days oldest → newest so lots append in date order;
+    # only fully-past days qualify (today's 15:00 order has not executed yet).
+    for offset in range(45, 0, -1):
+        d = today - timedelta(days=offset)
+        if d.weekday() not in weekdays:
+            continue
+        ds = d.isoformat()
+        if ds < floor or ds in existing or ds not in nav_map:
+            continue
+        nav = nav_map[ds]
+        if nav <= 0:
+            continue
+        shares = round(net / nav, 2)
+        holding.cost_lots.append({
+            "date": ds,
+            "amount_cny": net,
+            "nav_at_purchase": nav,
+            "shares": shares,
+            "nav_confirmed": True,
+            "note": (f"周定投自动落账：计划¥{amount:.0f}、手续费{fee:.2f}→净{net}，"
+                     f"按{ds}净值{nav:.4f}确认{shares:.2f}份（计划日自动记账，未人工核对）"),
+        })
+        existing.add(ds)
+        lines.append(f"{ds} 定投自动落账 ¥{net:.2f} @净值{nav:.4f} = {shares:.2f}份")
+    if lines:
+        print(f"[DCA] {holding.fund_code}: booked {len(lines)} weekly-DCA lot(s)")
+    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +537,7 @@ def main():
     reversal_pushes = []  # 右侧加仓即时推送 (title, content)
     dip_buy_pushes = []   # 跌多买多档位触发推送 (title, content)
     holdings_changed = False
+    dca_lines = []  # 周定投自动记账（确认/新落账）→ 当日日报播报
     is_first_run = (run_state.get("total_runs", 0) == 0)
     reversal_cfg = prefs.reversal_add or {}
     reversal_profiles = reversal_cfg.get("profiles", ["sector"])
@@ -525,8 +592,27 @@ def main():
         print(f"  Saved {len(merged_nav)} total NAV records ({new_points} new)")
 
         # Confirm any pending cost lots using the exact confirmation-date NAV
+        dca_cfg = getattr(prefs, "weekly_dca", None) or {}
+        dca_plan_fund = (dca_cfg.get("enabled", True)
+                         and holding.fund_code in {p.get("fund_code")
+                         for p in (dca_cfg.get("plans") or []) if p.get("fund_code")})
+        pend_before = {l.get("date") for l in holding.cost_lots
+                       if dca_plan_fund and not l.get("nav_confirmed", True)}
         if _confirm_pending_lots(holding, merged_nav):
             holdings_changed = True
+            if pend_before:
+                for l in holding.cost_lots:
+                    if (l.get("date") in pend_before and l.get("nav_confirmed")
+                            and l.get("nav_at_purchase") is not None
+                            and l.get("shares") is not None):
+                        dca_lines.append(
+                            f"{holding.fund_name}：{l['date']} 定投确认 "
+                            f"净值 {l['nav_at_purchase']:.4f}，份额 {l['shares']:.2f}"
+                        )
+
+        # 周定投自动落账（040046 周一~三、017641 周三~五，¥10 固定单）——
+        # 用户不再逐笔人工报告；净值入库后按下单日净值自动补单。
+        dca_lines.extend(_book_weekly_dca(holding, merged_nav, prefs.weekly_dca))
 
         # Fetch benchmark index (海外 QDII 无 A 股基准指数，benchmark_index 为空则跳过)
         benchmark_df = pd.DataFrame()
@@ -700,6 +786,7 @@ def main():
         macro_brief=macro_brief,
         quiet_funds=quiet_funds,
         rotation_evals=rotation_evals,
+        dca_notes=dca_lines,
     )
 
     # ---- 8. Push daily report (single push to avoid rate limiting) ----
