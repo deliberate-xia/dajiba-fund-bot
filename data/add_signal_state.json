@@ -46,5 +46,13 @@
     "signal_since": "",
     "reference_nav": 0.0,
     "recent_low": 0.0
+  },
+  "270042": {
+    "fund_code": "270042",
+    "status": "idle",
+    "tier": 0,
+    "signal_since": "",
+    "reference_nav": 0.0,
+    "recent_low": 0.0
   }
 }

@@ -1,28 +1,28 @@
 {
   "003015": {
-    "signal_type": "stop",
-    "since": "2026-09-03",
-    "last_push": "2026-09-03"
+    "signal_type": "hold",
+    "since": "2026-09-04",
+    "last_push": "2026-09-04"
   },
   "018927": {
     "signal_type": "hold",
     "since": "2026-09-02",
-    "last_push": "2026-09-03"
+    "last_push": "2026-09-04"
   },
   "161725": {
     "signal_type": "hold",
     "since": "2026-08-28",
-    "last_push": "2026-09-03"
+    "last_push": "2026-09-04"
   },
   "017140": {
-    "signal_type": "hold",
-    "since": "2026-09-03",
-    "last_push": "2026-09-03"
+    "signal_type": "reduce",
+    "since": "2026-09-04",
+    "last_push": "2026-09-04"
   },
   "040046": {
     "signal_type": "hold",
     "since": "2026-08-28",
-    "last_push": "2026-09-03"
+    "last_push": "2026-09-04"
   },
   "050025": {
     "signal_type": "hold",
@@ -30,13 +30,18 @@
     "last_push": "2026-08-28"
   },
   "001338": {
-    "signal_type": "add",
-    "since": "2026-08-28",
-    "last_push": "2026-09-03"
+    "signal_type": "hold",
+    "since": "2026-09-04",
+    "last_push": "2026-09-04"
   },
   "017641": {
     "signal_type": "hold",
     "since": "2026-09-01",
-    "last_push": "2026-09-03"
+    "last_push": "2026-09-04"
+  },
+  "270042": {
+    "signal_type": "hold",
+    "since": "2026-09-04",
+    "last_push": "2026-09-04"
   }
 }

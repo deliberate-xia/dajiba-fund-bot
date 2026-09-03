@@ -6,5 +6,9 @@
   "003015": {
     "max_tier": 1,
     "last_trigger_date": "2026-09-01"
+  },
+  "270042": {
+    "max_tier": 1,
+    "last_trigger_date": "2026-09-04"
   }
 }

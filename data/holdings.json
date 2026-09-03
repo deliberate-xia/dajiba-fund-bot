@@ -178,9 +178,9 @@
       {
         "date": "2026-09-02",
         "amount_cny": 9.99,
-        "nav_at_purchase": null,
-        "shares": null,
-        "nav_confirmed": false,
+        "nav_at_purchase": 8.1014,
+        "shares": 1.23,
+        "nav_confirmed": true,
         "note": "周定投计划（每周一~三 15:00前）¥10、手续费0.01→净9.99：9/2周三单，已启用自动确认（净值入库后自动补全）"
       }
     ],
@@ -206,9 +206,9 @@
       {
         "date": "2026-09-02",
         "amount_cny": 9.99,
-        "nav_at_purchase": null,
-        "shares": null,
-        "nav_confirmed": false,
+        "nav_at_purchase": 1.7044,
+        "shares": 5.86,
+        "nav_confirmed": true,
         "note": "周定投计划（每周三~五 15:00前）¥10、手续费0.01→净9.99：9/2周三单，已启用自动确认（净值入库后自动补全）"
       },
       {
