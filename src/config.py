@@ -54,12 +54,20 @@ class FundHolding:
 
     @property
     def weighted_entry_nav(self) -> float | None:
-        """Average NAV of purchase lots only (redemptions must NOT be mixed in —
-        selling at a higher NAV would otherwise distort the cost basis downward)."""
-        purchases = [l for l in self.cost_lots
-                     if l.get("nav_confirmed", False)
-                     and (l.get("amount_cny") or 0) > 0
-                     and l.get("nav_at_purchase") is not None]
+        """Average NAV of the OPEN campaign's purchase lots only (see
+        segment_campaigns). A fully exited round must NOT leak its cost basis
+        into a re-entered position — e.g. 003015 exited 8/27 @2.0984, re-bought
+        9/1 @2.1221; pooling both would shift the entry NAV used for
+        stop/take-profit lines by ~0.5%. Falls back to all purchase lots when
+        the fund is fully closed, keeping legacy single-campaign semantics."""
+        closed, open_c = segment_campaigns(self.cost_lots)
+        if open_c is not None:
+            purchases = open_c["purchases"]
+        else:
+            purchases = [l for l in self.cost_lots
+                         if l.get("nav_confirmed", False)
+                         and (l.get("amount_cny") or 0) > 0
+                         and l.get("nav_at_purchase") is not None]
         if not purchases:
             return None
         total_amt = sum(l["amount_cny"] for l in purchases)
@@ -68,25 +76,82 @@ class FundHolding:
         return sum(l["amount_cny"] * l["nav_at_purchase"] for l in purchases) / total_amt
 
     @property
+    def position_entry_date(self) -> str | None:
+        """Earliest purchase date of the OPEN campaign; None when fully closed
+        (callers fall back to the legacy min-confirmed-lot date)."""
+        _, open_c = segment_campaigns(self.cost_lots)
+        if open_c is None or not open_c["purchases"]:
+            return None
+        return min(l["date"] for l in open_c["purchases"])
+
+    @property
     def realized_pnl(self) -> float:
-        """Realized PnL from redemption lots: proceeds − cost of redeemed shares."""
-        avg_nav = self.weighted_entry_nav
-        if avg_nav is None or avg_nav <= 0:
-            return 0.0
+        """Realized PnL: proceeds − cost, priced per campaign (see
+        segment_campaigns). Each redemption is measured against its own
+        campaign's average purchase NAV, so a closed round keeps its own
+        result even after the fund is re-entered at a different NAV."""
         realized = 0.0
-        for l in self.cost_lots:
-            if not l.get("nav_confirmed", False):
+        closed, open_c = segment_campaigns(self.cost_lots)
+        for camp in closed + ([open_c] if open_c is not None else []):
+            purchases = camp["purchases"]
+            if not purchases:
                 continue
-            shares = l.get("shares") or 0
-            amount = l.get("amount_cny") or 0
-            if shares < 0 and amount < 0:
-                proceeds = -amount
-                realized += proceeds - (-shares * avg_nav)
+            total_amt = sum(l["amount_cny"] for l in purchases)
+            if total_amt <= 0:
+                continue
+            avg = sum(l["amount_cny"] * l["nav_at_purchase"] for l in purchases) / total_amt
+            for l in camp["redemptions"]:
+                shares = l.get("shares") or 0
+                amount = l.get("amount_cny") or 0
+                if shares < 0 and amount < 0:
+                    realized += -amount - (-shares * avg)
         return realized
 
     @property
     def has_pending_lots(self) -> bool:
         return any(not l.get("nav_confirmed", False) for l in self.cost_lots)
+
+
+def segment_campaigns(cost_lots: list[dict]) -> tuple[list[dict], dict | None]:
+    """Split confirmed lots into closed round-trip campaigns plus the open one.
+
+    A fund can be fully exited and later re-entered (003015: exited 8/27,
+    re-bought 9/1). Without segmentation the old round's purchase lots keep
+    pooling with the new position, distorting entry NAV and realized P&L.
+
+    Lots are consumed in (date, purchase-first, file order) so same-day
+    corrections/re-purchases land before same-day redemptions. Every
+    confirmed purchase that happens while cumulative confirmed shares sit at
+    zero starts a new campaign. Returns (closed_campaigns, open_campaign_or_None);
+    each campaign = {"purchases": [...], "redemptions": [...]}.
+    """
+    ordered = sorted(
+        enumerate(cost_lots),
+        key=lambda e: (e[1].get("date", ""), 1 if (e[1].get("shares") or 0) < 0 else 0, e[0]),
+    )
+    campaigns: list[dict] = []
+    current: dict = {"purchases": [], "redemptions": []}
+    running = 0.0
+    for _, lot in ordered:
+        if not lot.get("nav_confirmed", False):
+            continue
+        shares = lot.get("shares")
+        if shares is None:
+            continue
+        if shares > 0:
+            if running <= 1e-9 and (current["purchases"] or current["redemptions"]):
+                campaigns.append(current)
+                current = {"purchases": [], "redemptions": []}
+            current["purchases"].append(lot)
+            running += shares
+        else:
+            current["redemptions"].append(lot)
+            running += shares  # negative
+    if current["purchases"] or current["redemptions"]:
+        campaigns.append(current)
+    if running > 1e-9 and campaigns:
+        return campaigns[:-1], campaigns[-1]
+    return campaigns, None
 
 
 @dataclass

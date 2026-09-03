@@ -808,11 +808,16 @@ def analyze_fund(
     analysis.entry_nav_weighted = entry_nav
 
     # ---- Stop-loss ----
-    # Get earliest confirmed cost lot date as entry date
-    entry_date = min(
-        (lot["date"] for lot in holding.cost_lots if lot.get("nav_confirmed", False)),
-        default=str(nav_series.index[0] if hasattr(nav_series, "index") else nav_df["date"].iloc[0]),
-    )
+    # Entry date of the OPEN campaign only — for a fund that was fully exited
+    # and re-entered (e.g. 003015), the old round's earlier lot date would
+    # otherwise pull "highest NAV since entry" from the dead campaign and make
+    # the new position skip its fresh-entry data grace window.
+    entry_date = holding.position_entry_date
+    if entry_date is None:
+        entry_date = min(
+            (lot["date"] for lot in holding.cost_lots if lot.get("nav_confirmed", False)),
+            default=str(nav_series.index[0] if hasattr(nav_series, "index") else nav_df["date"].iloc[0]),
+        )
 
     stop_info = compute_stop_loss_levels(
         nav_series,
