@@ -214,10 +214,18 @@
       {
         "date": "2026-09-03",
         "amount_cny": 9.99,
-        "nav_at_purchase": null,
-        "shares": null,
-        "nav_confirmed": false,
+        "nav_at_purchase": 1.7213,
+        "shares": 5.8,
+        "nav_confirmed": true,
         "note": "周定投计划（每周三~五 15:00前）¥10、手续费0.01→净9.99：9/3周四单，已启用自动确认（净值入库后自动补全）"
+      },
+      {
+        "date": "2026-09-04",
+        "amount_cny": 9.99,
+        "nav_at_purchase": 1.7151,
+        "shares": 5.82,
+        "nav_confirmed": true,
+        "note": "周定投自动落账：计划¥10、手续费0.01→净9.99，按2026-09-04净值1.7151确认5.82份（计划日自动记账，未人工核对）"
       }
     ],
     "skip_tracking": false,
