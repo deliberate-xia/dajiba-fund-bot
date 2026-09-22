@@ -99,4 +99,34 @@ h5 = holding([lot("2026-09-02", 49.71, 1.6965, 29.30),
 check("existing pending date suppresses booking",
       _book_weekly_dca(h5, mkdf(rows), DCA_CFG, today=date(2026, 9, 8)) == ["2026-09-04 定投自动落账 ¥9.99 @净值1.7050 = 5.86份"])
 
+# ---- 6. Caller contract: booking must be observable, or it is never saved --
+# main.py persists holdings only under `if holdings_changed: save_holdings(...)`.
+# Booking therefore has to (a) return a non-empty list so the caller can flip
+# that flag, and (b) leave the lots on holding.cost_lots so the save persists
+# them. A silent mutation + empty return drops the lot with no error — which
+# is exactly how 12 lots (¥119.88) went missing between 9/7 and 9/18.
+h6 = holding([lot("2026-09-02", 49.71, 1.6965, 29.30)])
+booked = _book_weekly_dca(h6, mkdf(rows), DCA_CFG, today=date(2026, 9, 8))
+check("booking returns the booked lines (caller's save gate)", len(booked) > 0)
+check("booked dates are on holding.cost_lots, so a save persists them",
+      {l["date"] for l in h6.cost_lots} >= {"2026-09-03", "2026-09-04"})
+
+# Round-trip through the real save/load path: a booked lot must survive a run.
+import json          # noqa: E402
+import tempfile      # noqa: E402
+from src.config import load_holdings, save_holdings  # noqa: E402
+
+with tempfile.TemporaryDirectory() as td:
+    p = Path(td) / "holdings.json"
+    save_holdings({"017641": h6}, p)
+    reloaded = load_holdings(p)
+    n_before = len(h6.cost_lots)
+    check("booked lots survive save→load",
+          len(reloaded["017641"].cost_lots) == n_before)
+    # Re-running must not book the same dates twice (idempotent across runs).
+    again = _book_weekly_dca(reloaded["017641"], mkdf(rows), DCA_CFG,
+                             today=date(2026, 9, 8))
+    check("re-book is idempotent", again == [] and
+          len(reloaded["017641"].cost_lots) == n_before)
+
 print("\nAll weekly-DCA checks passed.")

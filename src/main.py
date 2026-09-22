@@ -612,7 +612,12 @@ def main():
 
         # 周定投自动落账（040046 周一~三、017641 周三~五，¥10 固定单）——
         # 用户不再逐笔人工报告；净值入库后按下单日净值自动补单。
-        dca_lines.extend(_book_weekly_dca(holding, merged_nav, prefs.weekly_dca))
+        # 落账即改动了 cost_lots，必须同步置位，否则下面 save_holdings 不会写盘，
+        # 这些 lot 会在没有待确认 lot 的日子里被静默丢弃。
+        dca_booked = _book_weekly_dca(holding, merged_nav, prefs.weekly_dca)
+        if dca_booked:
+            holdings_changed = True
+            dca_lines.extend(dca_booked)
 
         # Fetch benchmark index (海外 QDII 无 A 股基准指数，benchmark_index 为空则跳过)
         benchmark_df = pd.DataFrame()
