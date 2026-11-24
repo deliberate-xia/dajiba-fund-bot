@@ -1,18 +1,18 @@
 {
   "040046": {
-    "max_tier": 2,
-    "last_trigger_date": "2026-11-10"
+    "max_tier": 3,
+    "last_trigger_date": "2026-11-24"
   },
   "003015": {
     "max_tier": 1,
     "last_trigger_date": "2026-09-01"
   },
   "270042": {
-    "max_tier": 2,
-    "last_trigger_date": "2026-11-10"
+    "max_tier": 3,
+    "last_trigger_date": "2026-11-24"
   },
   "017641": {
-    "max_tier": 1,
-    "last_trigger_date": "2026-11-10"
+    "max_tier": 2,
+    "last_trigger_date": "2026-11-24"
   }
 }
